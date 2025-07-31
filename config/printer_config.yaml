@@ -9,7 +9,7 @@ printer:
   barcode_enabled: true
 
 receipt_template:
-  company_name: "Industrial Data Logger"
+  company_name: "Vulcan Sentinel"
   header_lines:
     - "JOB SUMMARY REPORT"
     - "Generated: {timestamp}"

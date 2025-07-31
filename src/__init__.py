@@ -1,2 +1,2 @@
 # Industrial Data Logging System
-# Main package for the datalogger application 
+# Main package for the Vulcan Sentinel application 

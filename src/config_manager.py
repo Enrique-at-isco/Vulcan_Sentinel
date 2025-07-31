@@ -100,11 +100,11 @@ class ConfigManager:
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default configuration"""
         return {
-            'app_name': 'Industrial Data Logger',
+            'app_name': 'Vulcan Sentinel',
             'version': '1.0.0',
             'log_level': 'INFO',
             'database': {
-                'path': 'data/datalogger.db',
+                'path': 'data/vulcan_sentinel.db',
                 'backup_interval_hours': 24
             },
             'api': {
@@ -178,7 +178,7 @@ class ConfigManager:
                     'alignment': 'left'
                 },
                 'receipt_template': {
-                    'company_name': 'Industrial Data Logger',
+                    'company_name': 'Vulcan Sentinel',
                     'header_lines': [
                         'JOB SUMMARY REPORT',
                         'Generated: {timestamp}'

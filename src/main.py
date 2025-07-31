@@ -1,5 +1,5 @@
 """
-Main entry point for the Industrial Data Logger application
+Main entry point for the Vulcan Sentinel application
 
 This module coordinates all services including:
 - Modbus polling
@@ -36,7 +36,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
-class DataLoggerApp:
+class VulcanSentinelApp:
     """Main application class that coordinates all services"""
     
     def __init__(self):
@@ -61,7 +61,7 @@ class DataLoggerApp:
     def initialize(self):
         """Initialize all application components"""
         try:
-            logger.info("Initializing Industrial Data Logger...")
+            logger.info("Initializing Vulcan Sentinel...")
             
             # Create necessary directories
             os.makedirs('logs', exist_ok=True)
@@ -79,7 +79,7 @@ class DataLoggerApp:
             # Log initialization event
             self.db_manager.log_event(
                 event_type="SYSTEM_STARTUP",
-                message="Industrial Data Logger initialized successfully",
+                message="Vulcan Sentinel initialized successfully",
                 severity="INFO"
             )
             
@@ -97,7 +97,7 @@ class DataLoggerApp:
                 logger.error("Failed to initialize application")
                 return False
             
-            logger.info("Starting Industrial Data Logger services...")
+            logger.info("Starting Vulcan Sentinel services...")
             self.running = True
             
             # Start Modbus poller
@@ -123,7 +123,7 @@ class DataLoggerApp:
     def stop(self):
         """Stop all application services"""
         try:
-            logger.info("Stopping Industrial Data Logger services...")
+            logger.info("Stopping Vulcan Sentinel services...")
             self.running = False
             
             # Stop Modbus poller
@@ -145,7 +145,7 @@ class DataLoggerApp:
     
     def shutdown(self):
         """Graceful shutdown of the application"""
-        logger.info("Shutting down Industrial Data Logger...")
+        logger.info("Shutting down Vulcan Sentinel...")
         
         # Stop all services
         self.stop()
@@ -183,7 +183,7 @@ class DataLoggerApp:
                 logger.error("Failed to start application")
                 return False
             
-            logger.info("Industrial Data Logger is running. Press Ctrl+C to stop.")
+            logger.info("Vulcan Sentinel is running. Press Ctrl+C to stop.")
             
             # Main loop - keep the application running
             while self.running:
@@ -217,7 +217,7 @@ def main():
     """Main entry point"""
     try:
         # Create and run the application
-        app = DataLoggerApp()
+        app = VulcanSentinelApp()
         success = app.run()
         
         if success:

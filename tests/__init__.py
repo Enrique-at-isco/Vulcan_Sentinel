@@ -1,1 +1,1 @@
-# Test package for Industrial Data Logger 
+# Test package for Vulcan Sentinel 

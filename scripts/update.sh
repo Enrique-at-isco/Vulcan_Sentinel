@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Industrial Data Logger - Automated Update Script
+# Vulcan Sentinel - Automated Update Script
 # This script handles Git-based deployment and Docker service updates
 
 set -e  # Exit on any error
 
 # Configuration
-REPO_URL="https://github.com/your-username/datalogger-app.git"
+REPO_URL="https://github.com/your-username/vulcan-sentinel.git"
 BRANCH="main"
 DOCKER_COMPOSE_FILE="docker-compose.yml"
 BACKUP_DIR="backups"
@@ -166,7 +166,7 @@ log "Log file: $LOG_FILE"
 if command -v curl &> /dev/null; then
     # You can add webhook notifications here
     # curl -X POST -H "Content-Type: application/json" \
-    #     -d '{"text":"Industrial Data Logger updated successfully"}' \
+    #     -d '{"text":"Vulcan Sentinel updated successfully"}' \
     #     YOUR_WEBHOOK_URL
     :
 fi

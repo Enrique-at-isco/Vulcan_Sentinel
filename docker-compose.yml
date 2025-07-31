@@ -1,12 +1,10 @@
-version: '3.8'
-
 services:
   # Main application service
   app:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: datalogger-app
+    container_name: vulcan-sentinel-app
     restart: unless-stopped
     ports:
       - "8080:8080"
@@ -17,36 +15,36 @@ services:
       - ./config:/app/config:ro
     environment:
       - LOG_LEVEL=INFO
-      - DATABASE_PATH=/app/data/datalogger.db
+      - DATABASE_PATH=/app/data/vulcan_sentinel.db
     networks:
-      - datalogger-network
+      - vulcan-sentinel-network
     depends_on:
       - database
 
   # SQLite database service (using volume for persistence)
   database:
     image: alpine:latest
-    container_name: datalogger-db
+    container_name: vulcan-sentinel-db
     restart: unless-stopped
     volumes:
       - ./data:/data
     command: >
       sh -c "
         apk add --no-cache sqlite &&
-        sqlite3 /data/datalogger.db 'CREATE TABLE IF NOT EXISTS devices (id INTEGER PRIMARY KEY, name TEXT, ip TEXT, port INTEGER, slave_id INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);' &&
-        sqlite3 /data/datalogger.db 'CREATE TABLE IF NOT EXISTS readings (id INTEGER PRIMARY KEY, device_name TEXT, timestamp TIMESTAMP, register_name TEXT, value REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);' &&
-        sqlite3 /data/datalogger.db 'CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, event_type TEXT, device_name TEXT, message TEXT, severity TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP);' &&
+        sqlite3 /data/vulcan_sentinel.db 'CREATE TABLE IF NOT EXISTS devices (id INTEGER PRIMARY KEY, name TEXT, ip TEXT, port INTEGER, slave_id INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);' &&
+        sqlite3 /data/vulcan_sentinel.db 'CREATE TABLE IF NOT EXISTS readings (id INTEGER PRIMARY KEY, device_name TEXT, timestamp TIMESTAMP, register_name TEXT, value REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);' &&
+        sqlite3 /data/vulcan_sentinel.db 'CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, event_type TEXT, device_name TEXT, message TEXT, severity TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP);' &&
         tail -f /dev/null
       "
     networks:
-      - datalogger-network
+      - vulcan-sentinel-network
 
   # Printer service for thermal printer integration
   printer:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: datalogger-printer
+    container_name: vulcan-sentinel-printer
     restart: unless-stopped
     volumes:
       - ./logs:/app/logs
@@ -57,7 +55,7 @@ services:
       - SERVICE_TYPE=printer
       - LOG_LEVEL=INFO
     networks:
-      - datalogger-network
+      - vulcan-sentinel-network
     depends_on:
       - app
 
@@ -66,7 +64,7 @@ services:
     build:
       context: .
       dockerfile: docker/Dockerfile
-    container_name: datalogger-reports
+    container_name: vulcan-sentinel-reports
     restart: unless-stopped
     volumes:
       - ./logs:/app/logs
@@ -76,7 +74,7 @@ services:
       - SERVICE_TYPE=reports
       - LOG_LEVEL=INFO
     networks:
-      - datalogger-network
+      - vulcan-sentinel-network
     depends_on:
       - app
       - database
@@ -84,7 +82,7 @@ services:
   # Nginx reverse proxy (optional)
   nginx:
     image: nginx:alpine
-    container_name: datalogger-nginx
+    container_name: vulcan-sentinel-nginx
     restart: unless-stopped
     ports:
       - "80:80"
@@ -93,12 +91,12 @@ services:
       - ./docker/nginx.conf:/etc/nginx/nginx.conf:ro
       - ./logs:/var/log/nginx
     networks:
-      - datalogger-network
+      - vulcan-sentinel-network
     depends_on:
       - app
 
 networks:
-  datalogger-network:
+  vulcan-sentinel-network:
     driver: bridge
 
 volumes:

@@ -1,12 +1,12 @@
 #!/bin/bash
 
-# Industrial Data Logger - Initial Deployment Script
+# Vulcan Sentinel - Initial Deployment Script
 # This script handles the initial setup and deployment of the system
 
 set -e  # Exit on any error
 
 # Configuration
-REPO_URL="https://github.com/your-username/datalogger-app.git"
+REPO_URL="https://github.com/your-username/vulcan-sentinel.git"
 BRANCH="main"
 
 # Colors for output
@@ -53,7 +53,7 @@ install_package() {
     fi
 }
 
-log "Starting Industrial Data Logger deployment..."
+log "Starting Vulcan Sentinel deployment..."
 
 # Check if running as root
 if [ "$EUID" -eq 0 ]; then
@@ -89,7 +89,7 @@ if ! command_exists docker-compose; then
 fi
 
 # Create application directory
-APP_DIR="/opt/datalogger-app"
+APP_DIR="/opt/vulcan-sentinel"
 if [ ! -d "$APP_DIR" ]; then
     log "Creating application directory..."
     sudo mkdir -p "$APP_DIR"
@@ -151,9 +151,9 @@ fi
 
 # Set up systemd service for auto-start
 log "Setting up systemd service for auto-start..."
-sudo tee /etc/systemd/system/datalogger.service > /dev/null <<EOF
+sudo tee /etc/systemd/system/vulcan-sentinel.service > /dev/null <<EOF
 [Unit]
-Description=Industrial Data Logger
+Description=Vulcan Sentinel
 After=docker.service
 Requires=docker.service
 
@@ -172,12 +172,12 @@ EOF
 
 # Enable and start the service
 sudo systemctl daemon-reload
-sudo systemctl enable datalogger.service
-sudo systemctl start datalogger.service
+sudo systemctl enable vulcan-sentinel.service
+sudo systemctl start vulcan-sentinel.service
 
 # Set up log rotation
 log "Setting up log rotation..."
-sudo tee /etc/logrotate.d/datalogger > /dev/null <<EOF
+sudo tee /etc/logrotate.d/vulcan-sentinel > /dev/null <<EOF
 $APP_DIR/logs/*.log {
     daily
     missingok
@@ -187,7 +187,7 @@ $APP_DIR/logs/*.log {
     notifempty
     create 644 $USER $USER
     postrotate
-        systemctl reload datalogger.service
+        systemctl reload vulcan-sentinel.service
     endscript
 }
 EOF
@@ -204,12 +204,12 @@ fi
 log "Creating monitoring script..."
 tee scripts/monitor.sh > /dev/null <<'EOF'
 #!/bin/bash
-# Simple monitoring script for the datalogger
+# Simple monitoring script for Vulcan Sentinel
 
-APP_DIR="/opt/datalogger-app"
+APP_DIR="/opt/vulcan-sentinel"
 cd "$APP_DIR"
 
-echo "=== Industrial Data Logger Status ==="
+echo "=== Vulcan Sentinel Status ==="
 echo "Time: $(date)"
 echo
 
@@ -239,9 +239,9 @@ chmod +x scripts/monitor.sh
 log "Creating backup script..."
 tee scripts/backup.sh > /dev/null <<'EOF'
 #!/bin/bash
-# Backup script for the datalogger
+# Backup script for Vulcan Sentinel
 
-APP_DIR="/opt/datalogger-app"
+APP_DIR="/opt/vulcan-sentinel"
 BACKUP_DIR="$APP_DIR/backups"
 BACKUP_NAME="backup_$(date +'%Y%m%d_%H%M%S')"
 
@@ -293,11 +293,11 @@ if curl -f -s http://localhost:8080/health > /dev/null; then
     echo "Start services: docker-compose up -d"
     echo
     echo "=== Systemd Service ==="
-    echo "Enable auto-start: sudo systemctl enable datalogger.service"
-    echo "Disable auto-start: sudo systemctl disable datalogger.service"
-    echo "Start service: sudo systemctl start datalogger.service"
-    echo "Stop service: sudo systemctl stop datalogger.service"
-    echo "Check status: sudo systemctl status datalogger.service"
+    echo "Enable auto-start: sudo systemctl enable vulcan-sentinel.service"
+    echo "Disable auto-start: sudo systemctl disable vulcan-sentinel.service"
+    echo "Start service: sudo systemctl start vulcan-sentinel.service"
+    echo "Stop service: sudo systemctl stop vulcan-sentinel.service"
+    echo "Check status: sudo systemctl status vulcan-sentinel.service"
 else
     warning "⚠️  Deployment completed, but API health check failed."
     echo "Please check the logs: docker-compose logs"

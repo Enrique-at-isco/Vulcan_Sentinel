@@ -15,7 +15,7 @@ A comprehensive industrial data logging and report generation system designed fo
 ## System Architecture
 
 ```
-datalogger_app/
+Vulcan_Sentinel/
 ├── src/                    # Python source code
 │   ├── modbus_poller.py    # Modbus TCP polling service
 │   ├── database.py         # SQLite database operations
@@ -50,7 +50,7 @@ datalogger_app/
 
 ```bash
 git clone <repository-url>
-cd datalogger_app
+cd Vulcan_Sentinel
 ```
 
 ### 2. Configure Environment
@@ -151,7 +151,7 @@ printer:
 ```bash
 # Clone repository
 git clone <repository-url>
-cd datalogger_app
+cd Vulcan_Sentinel
 
 # Configure environment
 cp .env.example .env

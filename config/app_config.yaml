@@ -1,9 +1,9 @@
-app_name: "Industrial Data Logger"
+app_name: "Vulcan Sentinel"
 version: "1.0.0"
 log_level: "INFO"
 
 database:
-  path: "data/datalogger.db"
+  path: "data/vulcan_sentinel.db"
   backup_interval_hours: 24
   cleanup_days: 30
 
