@@ -1,0 +1,35 @@
+app_name: "Industrial Data Logger"
+version: "1.0.0"
+log_level: "INFO"
+
+database:
+  path: "data/datalogger.db"
+  backup_interval_hours: 24
+  cleanup_days: 30
+
+api:
+  host: "0.0.0.0"
+  port: 8080
+  debug: false
+  cors_enabled: true
+
+polling:
+  default_interval: 20
+  retry_attempts: 3
+  retry_delay: 5
+  connection_timeout: 10
+
+printer:
+  enabled: true
+  auto_print_reports: true
+  print_interval_hours: 8
+
+reporting:
+  csv_enabled: true
+  pdf_enabled: true
+  email_enabled: false
+  archive_days: 90
+
+security:
+  api_key_required: false
+  max_requests_per_minute: 100 

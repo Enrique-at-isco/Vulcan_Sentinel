@@ -1,0 +1,30 @@
+devices:
+  sensor_1:
+    name: "Temperature Sensor 1"
+    ip: "169.254.1.1"
+    port: 502
+    slave_id: 1
+    registers:
+      temperature: 402
+    polling_interval: 20
+    description: "Primary temperature sensor for process monitoring"
+    
+  sensor_2:
+    name: "Temperature Sensor 2"
+    ip: "169.254.1.2"
+    port: 502
+    slave_id: 1
+    registers:
+      temperature: 402
+    polling_interval: 20
+    description: "Secondary temperature sensor for backup monitoring"
+    
+  sensor_3:
+    name: "Temperature Sensor 3"
+    ip: "169.254.1.3"
+    port: 502
+    slave_id: 1
+    registers:
+      temperature: 402
+    polling_interval: 20
+    description: "Tertiary temperature sensor for redundancy" 

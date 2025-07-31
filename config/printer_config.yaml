@@ -1,0 +1,27 @@
+printer:
+  name: "USB_Thermal_Printer"
+  connection: "usb://0x0483/0x5740"
+  paper_width: 80
+  print_quality: "high"
+  auto_cut: true
+  font_size: "normal"
+  alignment: "left"
+  barcode_enabled: true
+
+receipt_template:
+  company_name: "Industrial Data Logger"
+  header_lines:
+    - "JOB SUMMARY REPORT"
+    - "Generated: {timestamp}"
+    - "Device: {device_name}"
+  footer_lines:
+    - "Thank you for using our system"
+    - "Report ID: {report_id}"
+    - "Printed: {print_timestamp}"
+
+formatting:
+  line_separator: "="
+  section_separator: "-"
+  decimal_places: 2
+  units:
+    temperature: "°F" 
