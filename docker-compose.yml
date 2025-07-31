@@ -1,6 +1,6 @@
 services:
   # Main application service
-  app:
+  vulcan-sentinel-app:
     build:
       context: .
       dockerfile: docker/Dockerfile
