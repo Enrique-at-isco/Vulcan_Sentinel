@@ -57,7 +57,7 @@ services:
     networks:
       - vulcan-sentinel-network
     depends_on:
-      - app
+      - vulcan-sentinel-app
 
   # Report generator service
   reports:
@@ -76,7 +76,7 @@ services:
     networks:
       - vulcan-sentinel-network
     depends_on:
-      - app
+      - vulcan-sentinel-app
       - database
 
   # Nginx reverse proxy (optional)
@@ -93,7 +93,7 @@ services:
     networks:
       - vulcan-sentinel-network
     depends_on:
-      - app
+      - vulcan-sentinel-app
 
 networks:
   vulcan-sentinel-network:

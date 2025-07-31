@@ -23,7 +23,7 @@ COPY src/ ./src/
 COPY config/ ./config/
 COPY scripts/ ./scripts/
 
-# Create necessary directories
+# Create necessary directories with proper permissions
 RUN mkdir -p logs reports data
 
 # Set environment variables
@@ -32,7 +32,10 @@ ENV PYTHONUNBUFFERED=1
 
 # Create non-root user for security
 RUN useradd --create-home --shell /bin/bash app \
-    && chown -R app:app /app
+    && chown -R app:app /app \
+    && chmod 755 /app/logs /app/reports /app/data
+
+# Switch to app user
 USER app
 
 # Expose port

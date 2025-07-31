@@ -5,6 +5,7 @@ Handles concurrent polling of multiple Modbus TCP devices,
 data collection, and storage to both SQLite and CSV formats.
 """
 
+import os
 import time
 import logging
 import threading
@@ -22,14 +23,31 @@ from .database import DatabaseManager
 from .config_manager import ConfigManager
 
 # Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/modbus_poller.log'),
-        logging.StreamHandler()
-    ]
-)
+# Setup logging with error handling
+def setup_logging():
+    """Setup logging with proper error handling"""
+    try:
+        # Ensure logs directory exists
+        os.makedirs('logs', exist_ok=True)
+        
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler('logs/modbus_poller.log'),
+                logging.StreamHandler()
+            ]
+        )
+    except Exception as e:
+        # Fallback to console-only logging if file logging fails
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[logging.StreamHandler()]
+        )
+        print(f"Warning: Could not setup file logging: {e}")
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 
