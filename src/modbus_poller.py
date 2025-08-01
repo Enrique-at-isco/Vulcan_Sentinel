@@ -68,7 +68,7 @@ class ModbusDevice:
 class ModbusPoller:
     """Main Modbus polling service"""
     
-    def __init__(self, config_path: str = "config/devices.yaml"):
+    def __init__(self, config_path: str = "config/"):
         self.config_manager = ConfigManager(config_path)
         self.db_manager = DatabaseManager()
         self.devices: Dict[str, ModbusDevice] = {}
