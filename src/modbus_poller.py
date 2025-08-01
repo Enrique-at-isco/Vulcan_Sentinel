@@ -81,7 +81,7 @@ class ModbusPoller:
     def _load_devices(self):
         """Load device configurations from YAML file"""
         try:
-            config = self.config_manager.load_config()
+            config = self.config_manager.load_devices_config()
             devices_config = config.get('devices', {})
             
             for device_id, device_config in devices_config.items():
