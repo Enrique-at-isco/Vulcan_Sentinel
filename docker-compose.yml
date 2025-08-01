@@ -34,6 +34,8 @@ services:
         sqlite3 /data/vulcan_sentinel.db 'CREATE TABLE IF NOT EXISTS devices (id INTEGER PRIMARY KEY, name TEXT, ip TEXT, port INTEGER, slave_id INTEGER, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);' &&
         sqlite3 /data/vulcan_sentinel.db 'CREATE TABLE IF NOT EXISTS readings (id INTEGER PRIMARY KEY, device_name TEXT, timestamp TIMESTAMP, register_name TEXT, value REAL, created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP);' &&
         sqlite3 /data/vulcan_sentinel.db 'CREATE TABLE IF NOT EXISTS events (id INTEGER PRIMARY KEY, event_type TEXT, device_name TEXT, message TEXT, severity TEXT, timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP);' &&
+        chmod 666 /data/vulcan_sentinel.db &&
+        echo 'Database initialized with proper permissions' &&
         tail -f /dev/null
       "
     networks:
