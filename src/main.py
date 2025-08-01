@@ -24,15 +24,31 @@ from src.modbus_poller import ModbusPoller
 from src.database import DatabaseManager
 from src.config_manager import ConfigManager
 
-# Configure logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.FileHandler('logs/app.log'),
-        logging.StreamHandler()
-    ]
-)
+# Configure logging with error handling
+def setup_logging():
+    """Setup logging with proper error handling"""
+    try:
+        # Ensure logs directory exists
+        os.makedirs('logs', exist_ok=True)
+        
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[
+                logging.FileHandler('logs/app.log'),
+                logging.StreamHandler()
+            ]
+        )
+    except Exception as e:
+        # Fallback to console-only logging if file logging fails
+        logging.basicConfig(
+            level=logging.INFO,
+            format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+            handlers=[logging.StreamHandler()]
+        )
+        print(f"Warning: Could not setup file logging: {e}")
+
+setup_logging()
 logger = logging.getLogger(__name__)
 
 

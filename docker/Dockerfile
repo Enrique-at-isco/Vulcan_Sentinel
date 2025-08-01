@@ -38,6 +38,10 @@ RUN useradd --create-home --shell /bin/bash app \
 # Switch to app user
 USER app
 
+# Create a startup script to fix permissions
+COPY --chown=app:app docker/startup.sh /app/startup.sh
+RUN chmod +x /app/startup.sh
+
 # Expose port
 EXPOSE 8080
 
@@ -46,4 +50,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
     CMD python -c "import requests; requests.get('http://localhost:8080/health')" || exit 1
 
 # Default command
-CMD ["python", "src/main.py"] 
+CMD ["/app/startup.sh"] 
