@@ -131,71 +131,33 @@ class ModbusPoller:
             return False
     
     def _read_register(self, device: ModbusDevice, register_name: str, register_address: int) -> Optional[float]:
-        """Read a single register from a device"""
+        """Read a single register from a device - using exact same method as working script"""
         try:
             if not device.client or not device.client.is_socket_open():
                 if not self._connect_device(device):
                     return None
             
-            # Try reading as 32-bit float first (2 registers)
-            try:
-                result = device.client.read_input_registers(register_address, 2, slave=device.slave_id)
-                if not result.isError() and len(result.registers) == 2:
-                    decoder = BinaryPayloadDecoder.fromRegisters(
-                        result.registers,
-                        byteorder=Endian.Big,
-                        wordorder=Endian.Little
-                    )
-                    value = decoder.decode_32bit_float()
-                    logger.debug(f"Read 32-bit float from {device.name}: {value}")
-                    # Validate temperature is reasonable (-58°F to 932°F)
-                    if -58 <= value <= 932:
-                        return float(value)
-                    else:
-                        logger.warning(f"Temperature reading {value}°F from {device.name} is outside reasonable range (-58 to 932°F)")
-                        return None
-            except Exception as e:
-                logger.debug(f"Failed to read as 32-bit float from {device.name}: {e}")
-            
-            # Try reading as single 16-bit register
-            try:
-                result = device.client.read_input_registers(register_address, 1, slave=device.slave_id)
-                if not result.isError() and len(result.registers) == 1:
-                    value = float(result.registers[0]) / 10.0  # Assume temperature is stored as integer * 10
-                    logger.debug(f"Read 16-bit integer from {device.name}: {value}")
-                    # Validate temperature is reasonable (-58°F to 932°F)
-                    if -58 <= value <= 932:
-                        return value
-                    else:
-                        logger.warning(f"Temperature reading {value}°F from {device.name} is outside reasonable range (-58 to 932°F)")
-                        return None
-            except Exception as e:
-                logger.debug(f"Failed to read as 16-bit integer from {device.name}: {e}")
-            
-            # Try reading as raw 16-bit value
-            try:
-                result = device.client.read_input_registers(register_address, 1, slave=device.slave_id)
-                if not result.isError() and len(result.registers) == 1:
-                    value = float(result.registers[0])
-                    logger.debug(f"Read raw 16-bit value from {device.name}: {value}")
-                    # Validate temperature is reasonable (-58°F to 932°F)
-                    if -58 <= value <= 932:
-                        return value
-                    else:
-                        logger.warning(f"Temperature reading {value}°F from {device.name} is outside reasonable range (-58 to 932°F)")
-                        return None
-            except Exception as e:
-                logger.debug(f"Failed to read raw value from {device.name}: {e}")
-            
-            logger.warning(f"All reading methods failed for register {register_name} from {device.name}")
-            return None
+            # Use exact same method as watlow_realtime_1sensor.py
+            result = device.client.read_input_registers(register_address, 2, slave=device.slave_id)
+            if not result.isError():
+                decoder = BinaryPayloadDecoder.fromRegisters(
+                    result.registers,
+                    byteorder=Endian.Big,
+                    wordorder=Endian.Little
+                )
+                value = decoder.decode_32bit_float()
+                logger.debug(f"Read temperature from {device.name}: {value}°F")
+                return float(value)
+            else:
+                logger.warning(f"Error reading register {register_name} from {device.name}")
+                return None
                 
         except ModbusException as e:
             logger.error(f"Modbus error reading {register_name} from {device.name}: {e}")
             device.connection_status = False
             return None
         except Exception as e:
-            logger.error(f"Unexpected error reading {register_name} from {device.name}: {str(e)[:100]}")  # Truncate long error messages
+            logger.error(f"Unexpected error reading {register_name} from {device.name}: {str(e)[:100]}")
             return None
     
     def _poll_device(self, device: ModbusDevice):
