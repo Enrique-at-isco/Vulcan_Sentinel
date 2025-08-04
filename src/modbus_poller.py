@@ -222,7 +222,9 @@ class ModbusPoller:
     def _log_to_csv(self, device_name: str, timestamp: datetime, readings: Dict[str, float]):
         """Log readings to CSV file"""
         try:
-            csv_filename = f"logs/{device_name}_{timestamp.strftime('%Y%m%d')}.csv"
+            # Replace spaces with underscores for filename safety
+            safe_device_name = device_name.replace(' ', '_')
+            csv_filename = f"logs/{safe_device_name}_{timestamp.strftime('%Y%m%d')}.csv"
             
             # Create CSV file with headers if it doesn't exist
             import os
