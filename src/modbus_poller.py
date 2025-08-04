@@ -140,14 +140,20 @@ class ModbusPoller:
             # Use exact same method as watlow_realtime_1sensor.py
             result = device.client.read_input_registers(register_address, 2, slave=device.slave_id)
             if not result.isError():
-                decoder = BinaryPayloadDecoder.fromRegisters(
-                    result.registers,
-                    byteorder=Endian.Big,
-                    wordorder=Endian.Little
-                )
-                value = decoder.decode_32bit_float()
-                logger.debug(f"Read temperature from {device.name}: {value}°F")
-                return float(value)
+                logger.debug(f"Raw registers from {device.name}: {result.registers}")
+                try:
+                    decoder = BinaryPayloadDecoder.fromRegisters(
+                        result.registers,
+                        byteorder=Endian.Big,
+                        wordorder=Endian.Little
+                    )
+                    value = decoder.decode_32bit_float()
+                    logger.debug(f"Read temperature from {device.name}: {value}°F")
+                    return float(value)
+                except Exception as decode_error:
+                    logger.error(f"Decode error for {device.name}: {decode_error}")
+                    logger.error(f"Registers: {result.registers}")
+                    return None
             else:
                 logger.warning(f"Error reading register {register_name} from {device.name}")
                 return None
@@ -157,7 +163,7 @@ class ModbusPoller:
             device.connection_status = False
             return None
         except Exception as e:
-            logger.error(f"Unexpected error reading {register_name} from {device.name}: {str(e)[:100]}")
+            logger.error(f"Unexpected error reading {register_name} from {device.name}: {str(e)}")
             return None
     
     def _poll_device(self, device: ModbusDevice):
