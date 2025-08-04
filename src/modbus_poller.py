@@ -146,7 +146,7 @@ class ModbusPoller:
                         byteorder=Endian.Big,
                         wordorder=Endian.Little
                     )
-                    value = decoder.decode_32bit_float()
+                    value = int(decoder.decode_32bit_float())
                     logger.debug(f"Read 32-bit float from {device.name}: {value}")
                     return float(value)
             except Exception as e:
