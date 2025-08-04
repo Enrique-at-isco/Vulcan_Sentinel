@@ -7,7 +7,7 @@ devices:
     registers:
       temperature: 402
     polling_interval: 20
-    description: "Preheat temperature sensor for process monitoring"
+    description: "Preheat temperature sensor for process monitoring (Fahrenheit)"
     
   sensor_2:
     name: "main_heat"
@@ -17,7 +17,7 @@ devices:
     registers:
       temperature: 402
     polling_interval: 20
-    description: "Main heat temperature sensor for primary monitoring"
+    description: "Main heat temperature sensor for primary monitoring (Fahrenheit)"
     
   sensor_3:
     name: "rib_heat"
@@ -27,4 +27,4 @@ devices:
     registers:
       temperature: 402
     polling_interval: 20
-    description: "Rib heat temperature sensor for secondary monitoring" 
+    description: "Rib heat temperature sensor for secondary monitoring (Fahrenheit)" 

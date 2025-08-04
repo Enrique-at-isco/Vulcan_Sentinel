@@ -146,9 +146,14 @@ class ModbusPoller:
                         byteorder=Endian.Big,
                         wordorder=Endian.Little
                     )
-                    value = int(decoder.decode_32bit_float())
+                    value = decoder.decode_32bit_float()
                     logger.debug(f"Read 32-bit float from {device.name}: {value}")
-                    return float(value)
+                    # Validate temperature is reasonable (-58°F to 932°F)
+                    if -58 <= value <= 932:
+                        return float(value)
+                    else:
+                        logger.warning(f"Temperature reading {value}°F from {device.name} is outside reasonable range (-58 to 932°F)")
+                        return None
             except Exception as e:
                 logger.debug(f"Failed to read as 32-bit float from {device.name}: {e}")
             
@@ -158,7 +163,12 @@ class ModbusPoller:
                 if not result.isError() and len(result.registers) == 1:
                     value = float(result.registers[0]) / 10.0  # Assume temperature is stored as integer * 10
                     logger.debug(f"Read 16-bit integer from {device.name}: {value}")
-                    return value
+                    # Validate temperature is reasonable (-58°F to 932°F)
+                    if -58 <= value <= 932:
+                        return value
+                    else:
+                        logger.warning(f"Temperature reading {value}°F from {device.name} is outside reasonable range (-58 to 932°F)")
+                        return None
             except Exception as e:
                 logger.debug(f"Failed to read as 16-bit integer from {device.name}: {e}")
             
@@ -168,7 +178,12 @@ class ModbusPoller:
                 if not result.isError() and len(result.registers) == 1:
                     value = float(result.registers[0])
                     logger.debug(f"Read raw 16-bit value from {device.name}: {value}")
-                    return value
+                    # Validate temperature is reasonable (-58°F to 932°F)
+                    if -58 <= value <= 932:
+                        return value
+                    else:
+                        logger.warning(f"Temperature reading {value}°F from {device.name} is outside reasonable range (-58 to 932°F)")
+                        return None
             except Exception as e:
                 logger.debug(f"Failed to read raw value from {device.name}: {e}")
             
@@ -236,8 +251,8 @@ class ModbusPoller:
                 writer = csv.writer(csvfile)
                 
                 if not file_exists:
-                    # Write headers
-                    headers = ['Timestamp'] + list(readings.keys())
+                    # Write headers with units
+                    headers = ['Timestamp'] + [f"{key} (°F)" for key in readings.keys()]
                     writer.writerow(headers)
                 
                 # Write data row
