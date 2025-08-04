@@ -141,38 +141,34 @@ class ModbusPoller:
             result = device.client.read_input_registers(register_address, 2, slave=device.slave_id)
             if not result.isError():
                 logger.debug(f"Raw registers from {device.name}: {result.registers}")
-                try:
-                    # Try different byteorder/wordorder combinations
-                    combinations = [
-                        (Endian.Big, Endian.Little),      # Original
-                        (Endian.Little, Endian.Big),      # Reverse
-                        (Endian.Big, Endian.Big),         # Both Big
-                        (Endian.Little, Endian.Little),   # Both Little
-                    ]
-                    
-                    for byteorder, wordorder in combinations:
-                        try:
-                            decoder = BinaryPayloadDecoder.fromRegisters(
-                                result.registers,
-                                byteorder=byteorder,
-                                wordorder=wordorder
-                            )
-                            value = decoder.decode_32bit_float()
-                            logger.debug(f"Read temperature from {device.name}: {value}°F (byteorder={byteorder}, wordorder={wordorder})")
-                            return float(value)
-                        except Exception as combo_error:
-                            logger.debug(f"Failed {device.name} with byteorder={byteorder}, wordorder={wordorder}: {combo_error}")
-                            continue
-                    
-                    # If all combinations fail, log the error
-                    logger.error(f"All decode combinations failed for {device.name}")
-                    logger.error(f"Registers: {result.registers}")
-                    return None
-                    
-                except Exception as decode_error:
-                    logger.error(f"Decode error for {device.name}: {decode_error}")
-                    logger.error(f"Registers: {result.registers}")
-                    return None
+                
+                # Try different byteorder/wordorder combinations
+                logger.debug(f"Testing combinations for {device.name} with registers: {result.registers}")
+                combinations = [
+                    ("big", "little"),      # Original
+                    ("little", "big"),      # Reverse
+                    ("big", "big"),         # Both Big
+                    ("little", "little"),   # Both Little
+                ]
+                
+                for byteorder, wordorder in combinations:
+                    try:
+                        decoder = BinaryPayloadDecoder.fromRegisters(
+                            result.registers,
+                            byteorder=byteorder,
+                            wordorder=wordorder
+                        )
+                        value = decoder.decode_32bit_float()
+                        logger.debug(f"Read temperature from {device.name}: {value}°F (byteorder={byteorder}, wordorder={wordorder})")
+                        return float(value)
+                    except Exception as combo_error:
+                        logger.debug(f"Failed {device.name} with byteorder={byteorder}, wordorder={wordorder}: {combo_error}")
+                        continue
+                
+                # If all combinations fail, log the error
+                logger.error(f"All decode combinations failed for {device.name}")
+                logger.error(f"Registers: {result.registers}")
+                return None
             else:
                 logger.warning(f"Error reading register {register_name} from {device.name}")
                 return None
