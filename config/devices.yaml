@@ -1,7 +1,7 @@
 devices:
   sensor_1:
     name: "Temperature Sensor 1"
-    ip: "169.254.1.1"
+    ip: "169.254.100.100"
     port: 502
     slave_id: 1
     registers:
@@ -11,7 +11,7 @@ devices:
     
   sensor_2:
     name: "Temperature Sensor 2"
-    ip: "169.254.1.2"
+    ip: "169.254.100.200"
     port: 502
     slave_id: 1
     registers:
