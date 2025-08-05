@@ -17,6 +17,7 @@ from flask_cors import CORS
 import sqlite3
 import csv
 from io import StringIO, BytesIO
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,9 @@ class VulcanSentinelWebServer:
         self.port = port
         self.app = Flask(__name__)
         CORS(self.app)
+        
+        # Set timezone to CST
+        self.cst_tz = pytz.timezone('America/Chicago')
         
         # Register routes
         self._register_routes()
@@ -70,7 +74,12 @@ class VulcanSentinelWebServer:
         @self.app.route('/health')
         def health():
             """Health check endpoint"""
-            return jsonify({"status": "healthy", "timestamp": datetime.now().isoformat()})
+            return jsonify({"status": "healthy", "timestamp": datetime.now(self.cst_tz).isoformat()})
+        
+        @self.app.route('/api/cleanup-duplicates')
+        def api_cleanup_duplicates():
+            """Clean up duplicate readings with same timestamp"""
+            return jsonify(self._cleanup_duplicate_readings())
     
     def _get_dashboard(self):
         """Generate dashboard HTML"""
@@ -129,9 +138,10 @@ class VulcanSentinelWebServer:
                         <p>Industrial Temperature Monitoring System</p>
                     </div>
                     
-                    <div class="refresh">
-                        <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Data</button>
-                    </div>
+                                         <div class="refresh">
+                         <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Data</button>
+                         <button class="refresh-btn" onclick="cleanupDuplicates()" style="background: #dc3545; margin-left: 10px;">🧹 Clean Duplicates</button>
+                     </div>
                     
                     <div class="status-grid">
                         <div class="status-card">
@@ -146,7 +156,7 @@ class VulcanSentinelWebServer:
                             <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
                                 <div style="font-weight: bold; color: #333;">{device_name.replace('_', ' ').title()}</div>
                                 <div class="temperature">{temp}°F</div>
-                                <div style="text-align: center; color: #666; font-size: 0.9em;">Last updated: {data.get('timestamp', 'N/A')}</div>
+                                                                 <div style="text-align: center; color: #666; font-size: 0.9em;">Last updated: {self._format_timestamp_cst(data.get('timestamp', 'N/A'))}</div>
                             </div>
                     """
                 else:
@@ -181,10 +191,10 @@ class VulcanSentinelWebServer:
                                     <span>System Status:</span>
                                     <span class="connected">🟢 Running</span>
                                 </div>
-                                <div class="device-info">
-                                    <span>Last Update:</span>
-                                    <span>{datetime.now().strftime('%Y-%m-%d %H:%M:%S')}</span>
-                                </div>
+                                                                 <div class="device-info">
+                                     <span>Last Update:</span>
+                                     <span>{datetime.now(self.cst_tz).strftime('%Y-%m-%d %H:%M:%S')}</span>
+                                 </div>
                             </div>
                         </div>
                                          </div>
@@ -362,6 +372,26 @@ class VulcanSentinelWebServer:
                      setTimeout(function() {{
                          location.reload();
                      }}, 300000);
+                     
+                     // Function to cleanup duplicate readings
+                     async function cleanupDuplicates() {{
+                         if (confirm('Are you sure you want to clean up duplicate readings? This cannot be undone.')) {{
+                             try {{
+                                 const response = await fetch('/api/cleanup-duplicates');
+                                 const result = await response.json();
+                                 
+                                 if (result.success) {{
+                                     alert(`Success: ${{result.message}}`);
+                                     location.reload();
+                                 }} else {{
+                                     alert(`Error: ${{result.error}}`);
+                                 }}
+                             }} catch (error) {{
+                                 console.error('Error cleaning up duplicates:', error);
+                                 alert('Error cleaning up duplicates');
+                             }}
+                         }}
+                     }}
                  </script>
             </body>
             </html>
@@ -372,6 +402,24 @@ class VulcanSentinelWebServer:
         except Exception as e:
             logger.error(f"Error generating dashboard: {e}")
             return f"<h1>Error</h1><p>{str(e)}</p>"
+    
+    def _format_timestamp_cst(self, timestamp_str):
+        """Format timestamp to CST timezone with military time"""
+        try:
+            if timestamp_str == 'N/A':
+                return 'N/A'
+            
+            # Parse the timestamp (assuming it's in UTC)
+            dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            
+            # Convert to CST
+            cst_dt = dt.astimezone(self.cst_tz)
+            
+            # Format in military time
+            return cst_dt.strftime('%Y-%m-%d %H:%M:%S')
+        except Exception as e:
+            logger.error(f"Error formatting timestamp {timestamp_str}: {e}")
+            return timestamp_str
     
     def _get_system_status(self):
         """Get system status from database"""
@@ -459,8 +507,8 @@ class VulcanSentinelWebServer:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Get data from the last N days
-            start_date = datetime.now() - timedelta(days=days)
+            # Get data from the last N days in CST
+            start_date = datetime.now(self.cst_tz) - timedelta(days=days)
             
             cursor.execute("""
                 SELECT device_name, value, timestamp
@@ -475,9 +523,13 @@ class VulcanSentinelWebServer:
                 device_name, value, timestamp = row
                 if device_name not in data:
                     data[device_name] = []
+                
+                # Convert timestamp to CST for display
+                cst_timestamp = self._format_timestamp_cst(timestamp)
+                
                 data[device_name].append({
                     'temperature': value,
-                    'timestamp': timestamp
+                    'timestamp': cst_timestamp
                 })
             
             conn.close()
@@ -548,7 +600,9 @@ class VulcanSentinelWebServer:
             
             for row in cursor.fetchall():
                 timestamp, value = row
-                writer.writerow([timestamp, value])
+                # Convert timestamp to CST for CSV
+                cst_timestamp = self._format_timestamp_cst(timestamp)
+                writer.writerow([cst_timestamp, value])
             
             conn.close()
             
@@ -565,6 +619,40 @@ class VulcanSentinelWebServer:
         except Exception as e:
             logger.error(f"Error generating CSV for {device_name}: {e}")
             return jsonify({'error': str(e)}), 500
+    
+    def _cleanup_duplicate_readings(self):
+        """Clean up duplicate readings with the same timestamp"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Find and delete duplicate readings
+            cursor.execute("""
+                DELETE FROM readings 
+                WHERE id NOT IN (
+                    SELECT MIN(id) 
+                    FROM readings 
+                    GROUP BY device_name, register_name, timestamp
+                )
+            """)
+            
+            deleted_count = cursor.rowcount
+            conn.commit()
+            conn.close()
+            
+            logger.info(f"Cleaned up {deleted_count} duplicate readings")
+            return {
+                'success': True,
+                'deleted_count': deleted_count,
+                'message': f'Cleaned up {deleted_count} duplicate readings'
+            }
+            
+        except Exception as e:
+            logger.error(f"Error cleaning up duplicates: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
     def start(self):
         """Start the web server"""

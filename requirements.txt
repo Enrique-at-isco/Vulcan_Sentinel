@@ -37,4 +37,7 @@ mypy==1.7.1
 
 # System utilities
 psutil==5.9.6
-schedule==1.2.0 
+schedule==1.2.0
+
+# Timezone support
+pytz==2023.3 
