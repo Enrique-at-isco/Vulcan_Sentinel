@@ -18,6 +18,8 @@ import sqlite3
 import csv
 from io import StringIO, BytesIO
 import pytz
+import shutil
+import psutil
 
 logger = logging.getLogger(__name__)
 
@@ -80,6 +82,11 @@ class VulcanSentinelWebServer:
         def api_cleanup_duplicates():
             """Clean up duplicate readings with same timestamp"""
             return jsonify(self._cleanup_duplicate_readings())
+        
+        @self.app.route('/api/storage-info')
+        def api_storage_info():
+            """Get storage usage information"""
+            return jsonify(self._get_storage_info())
     
     def _get_dashboard(self):
         """Generate dashboard HTML"""
@@ -127,6 +134,16 @@ class VulcanSentinelWebServer:
                      .chart-container {{ background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }}
                      .chart-container h3 {{ margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }}
                      .chart-wrapper {{ position: relative; height: 400px; }}
+                     .footer {{ background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-top: 20px; }}
+                     .footer h3 {{ margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }}
+                     .storage-grid {{ display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 15px; }}
+                     .storage-card {{ background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid #667eea; }}
+                     .storage-card h4 {{ margin: 0 0 10px 0; color: #333; font-size: 1.1em; }}
+                     .storage-info {{ font-family: monospace; font-size: 0.9em; line-height: 1.4; }}
+                     .storage-bar {{ background: #e9ecef; border-radius: 4px; height: 8px; margin: 8px 0; overflow: hidden; }}
+                     .storage-bar-fill {{ height: 100%; background: linear-gradient(90deg, #28a745, #20c997); transition: width 0.3s ease; }}
+                     .storage-bar-fill.warning {{ background: linear-gradient(90deg, #ffc107, #fd7e14); }}
+                     .storage-bar-fill.danger {{ background: linear-gradient(90deg, #dc3545, #e83e8c); }}
                  </style>
                  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
                  <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
@@ -206,15 +223,33 @@ class VulcanSentinelWebServer:
                          </div>
                      </div>
                      
-                     <div class="actions">
-                         <h3>📥 Data Export</h3>
-                         <a href="/api/csv/preheat" class="btn">📄 Preheat CSV</a>
-                         <a href="/api/csv/main_heat" class="btn">📄 Main Heat CSV</a>
-                         <a href="/api/csv/rib_heat" class="btn">📄 Rib Heat CSV</a>
-                         <a href="/api/readings/history?days=7" class="btn">📊 7-Day History</a>
-                         <a href="/api/readings/history?days=30" class="btn">📊 30-Day History</a>
-                     </div>
-                 </div>
+                                           <div class="actions">
+                          <h3>📥 Data Export</h3>
+                          <a href="/api/csv/preheat" class="btn">📄 Preheat CSV</a>
+                          <a href="/api/csv/main_heat" class="btn">📄 Main Heat CSV</a>
+                          <a href="/api/csv/rib_heat" class="btn">📄 Rib Heat CSV</a>
+                          <a href="/api/readings/history?days=7" class="btn">📊 7-Day History</a>
+                          <a href="/api/readings/history?days=30" class="btn">📊 30-Day History</a>
+                      </div>
+                      
+                      <div class="footer">
+                          <h3>💾 Storage Information</h3>
+                          <div class="storage-grid">
+                              <div class="storage-card">
+                                  <h4>System Storage</h4>
+                                  <div id="system-storage">Loading...</div>
+                              </div>
+                              <div class="storage-card">
+                                  <h4>Database Size</h4>
+                                  <div id="database-size">Loading...</div>
+                              </div>
+                              <div class="storage-card">
+                                  <h4>Data Consumption</h4>
+                                  <div id="data-consumption">Loading...</div>
+                              </div>
+                          </div>
+                      </div>
+                  </div>
                 
                                  <script>
                      // Chart configuration
@@ -372,6 +407,72 @@ class VulcanSentinelWebServer:
                      setTimeout(function() {{
                          location.reload();
                      }}, 300000);
+                     
+                     // Function to format bytes to human readable format
+                     function formatBytes(bytes, decimals = 2) {{
+                         if (bytes === 0) return '0 Bytes';
+                         const k = 1024;
+                         const dm = decimals < 0 ? 0 : decimals;
+                         const sizes = ['Bytes', 'KB', 'MB', 'GB', 'TB'];
+                         const i = Math.floor(Math.log(bytes) / Math.log(k));
+                         return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
+                     }}
+                     
+                     // Function to update storage information
+                     async function updateStorageInfo() {{
+                         try {{
+                             const response = await fetch('/api/storage-info');
+                             const data = await response.json();
+                             
+                             // Update system storage
+                             const systemStorage = document.getElementById('system-storage');
+                             const systemUsagePercent = (data.system_storage.used / data.system_storage.total) * 100;
+                             const systemBarClass = systemUsagePercent > 80 ? 'danger' : systemUsagePercent > 60 ? 'warning' : '';
+                             
+                             systemStorage.innerHTML = `
+                                 <div class="storage-info">
+                                     <div>Total: ${{formatBytes(data.system_storage.total)}}</div>
+                                     <div>Used: ${{formatBytes(data.system_storage.used)}}</div>
+                                     <div>Available: ${{formatBytes(data.system_storage.available)}}</div>
+                                     <div class="storage-bar">
+                                         <div class="storage-bar-fill ${{systemBarClass}}" style="width: ${{systemUsagePercent}}%"></div>
+                                     </div>
+                                     <div>${{systemUsagePercent.toFixed(1)}}% used</div>
+                                 </div>
+                             `;
+                             
+                             // Update database size
+                             const databaseSize = document.getElementById('database-size');
+                             databaseSize.innerHTML = `
+                                 <div class="storage-info">
+                                     <div>Database: ${{formatBytes(data.database_size)}}</div>
+                                     <div>Records: ${{data.record_count.toLocaleString()}}</div>
+                                     <div>Oldest: ${{data.oldest_record}}</div>
+                                     <div>Newest: ${{data.newest_record}}</div>
+                                 </div>
+                             `;
+                             
+                             // Update data consumption
+                             const dataConsumption = document.getElementById('data-consumption');
+                             dataConsumption.innerHTML = `
+                                 <div class="storage-info">
+                                     <div>Today: ${{formatBytes(data.daily_consumption)}}</div>
+                                     <div>This Week: ${{formatBytes(data.weekly_consumption)}}</div>
+                                     <div>This Month: ${{formatBytes(data.monthly_consumption)}}</div>
+                                     <div>Avg/Day: ${{formatBytes(data.avg_daily_consumption)}}</div>
+                                 </div>
+                             `;
+                             
+                         }} catch (error) {{
+                             console.error('Error updating storage info:', error);
+                         }}
+                     }}
+                     
+                     // Load storage info on page load
+                     updateStorageInfo();
+                     
+                     // Auto-refresh storage info every 2 minutes
+                     setInterval(updateStorageInfo, 120000);
                      
                      // Function to cleanup duplicate readings
                      async function cleanupDuplicates() {{
@@ -653,6 +754,105 @@ class VulcanSentinelWebServer:
                 'success': False,
                 'error': str(e)
             }
+    
+    def _get_storage_info(self):
+        """Get comprehensive storage usage information"""
+        try:
+            # Get system storage information
+            disk_usage = shutil.disk_usage(os.path.dirname(self.db_path))
+            
+            # Get database size and statistics
+            db_size = 0
+            record_count = 0
+            oldest_record = None
+            newest_record = None
+            
+            if os.path.exists(self.db_path):
+                db_size = os.path.getsize(self.db_path)
+                
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                # Get record count
+                cursor.execute("SELECT COUNT(*) FROM readings")
+                record_count = cursor.fetchone()[0]
+                
+                # Get oldest and newest records
+                if record_count > 0:
+                    cursor.execute("SELECT MIN(timestamp), MAX(timestamp) FROM readings")
+                    oldest, newest = cursor.fetchone()
+                    if oldest:
+                        oldest_record = self._format_timestamp_cst(oldest)
+                    if newest:
+                        newest_record = self._format_timestamp_cst(newest)
+                
+                conn.close()
+            
+            # Calculate data consumption
+            daily_consumption = self._calculate_data_consumption(1)
+            weekly_consumption = self._calculate_data_consumption(7)
+            monthly_consumption = self._calculate_data_consumption(30)
+            
+            # Calculate average daily consumption (last 30 days)
+            avg_daily_consumption = monthly_consumption / 30 if monthly_consumption > 0 else 0
+            
+            return {
+                'system_storage': {
+                    'total': disk_usage.total,
+                    'used': disk_usage.used,
+                    'available': disk_usage.free
+                },
+                'database_size': db_size,
+                'record_count': record_count,
+                'oldest_record': oldest_record or 'N/A',
+                'newest_record': newest_record or 'N/A',
+                'daily_consumption': daily_consumption,
+                'weekly_consumption': weekly_consumption,
+                'monthly_consumption': monthly_consumption,
+                'avg_daily_consumption': avg_daily_consumption
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting storage info: {e}")
+            return {
+                'system_storage': {'total': 0, 'used': 0, 'available': 0},
+                'database_size': 0,
+                'record_count': 0,
+                'oldest_record': 'N/A',
+                'newest_record': 'N/A',
+                'daily_consumption': 0,
+                'weekly_consumption': 0,
+                'monthly_consumption': 0,
+                'avg_daily_consumption': 0
+            }
+    
+    def _calculate_data_consumption(self, days):
+        """Calculate data consumption for the specified number of days"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get data from the last N days
+            start_date = datetime.now(self.cst_tz) - timedelta(days=days)
+            
+            cursor.execute("""
+                SELECT COUNT(*) as record_count
+                FROM readings
+                WHERE timestamp >= ?
+            """, (start_date.isoformat(),))
+            
+            record_count = cursor.fetchone()[0]
+            conn.close()
+            
+            # Estimate data size (rough calculation)
+            # Each record: ~100 bytes (timestamp, device_name, register_name, value)
+            estimated_size = record_count * 100
+            
+            return estimated_size
+            
+        except Exception as e:
+            logger.error(f"Error calculating data consumption: {e}")
+            return 0
     
     def start(self):
         """Start the web server"""
