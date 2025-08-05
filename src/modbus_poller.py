@@ -156,8 +156,10 @@ class ModbusPoller:
                 if temp is not None:
                     try:
                         float_temp = float(temp)
-                        logger.debug(f"Converted temperature to float: {float_temp}")
-                        return float_temp
+                        # Round to whole number
+                        rounded_temp = round(float_temp)
+                        logger.debug(f"Converted temperature to float: {float_temp}, rounded to: {rounded_temp}")
+                        return rounded_temp
                     except (ValueError, TypeError) as e:
                         logger.error(f"Failed to convert temperature to float: {temp}, error: {e}")
                         return None
