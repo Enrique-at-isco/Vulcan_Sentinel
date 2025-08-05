@@ -16,7 +16,7 @@ from flask import Flask, render_template, jsonify, send_file, request
 from flask_cors import CORS
 import sqlite3
 import csv
-from io import StringIO
+from io import StringIO, BytesIO
 
 logger = logging.getLogger(__name__)
 
@@ -389,10 +389,11 @@ class VulcanSentinelWebServer:
             
             conn.close()
             
-            # Return CSV file
+            # Return CSV file using BytesIO
             output.seek(0)
+            csv_data = output.getvalue().encode('utf-8')
             return send_file(
-                StringIO(output.getvalue()),
+                BytesIO(csv_data),
                 mimetype='text/csv',
                 as_attachment=True,
                 download_name=f'{device_name}_data_{datetime.now().strftime("%Y%m%d")}.csv'
