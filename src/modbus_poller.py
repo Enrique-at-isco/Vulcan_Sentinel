@@ -31,7 +31,7 @@ def setup_logging():
         os.makedirs('logs', exist_ok=True)
         
         logging.basicConfig(
-            level=logging.INFO,
+            level=logging.DEBUG,
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
                 logging.FileHandler('logs/modbus_poller.log'),
@@ -140,10 +140,11 @@ class ModbusPoller:
         # Use exact same method as the working single sensor script - NO exception handling around decoder
         result = device.client.read_input_registers(register_address, 2, slave=device.slave_id)
         if not result.isError():
+            logger.debug(f"Raw registers from {device.name}: {result.registers}")
             decoder = BinaryPayloadDecoder.fromRegisters(
                 result.registers,
-                byteorder=Endian.Big,
-                wordorder=Endian.Little
+                byteorder="big",
+                wordorder="little"
             )
             temp = decoder.decode_32bit_float()
             logger.debug(f"Read temperature from {device.name}: {temp}°F")
@@ -186,6 +187,8 @@ class ModbusPoller:
                 
             except Exception as e:
                 logger.error(f"Error in polling loop for {device.name}: {e}")
+                logger.error(f"Exception type: {type(e).__name__}")
+                logger.error(f"Exception details: {str(e)}")
                 time.sleep(device.polling_interval)
     
     def _log_to_csv(self, device_name: str, timestamp: datetime, readings: Dict[str, float]):
