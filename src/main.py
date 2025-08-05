@@ -23,6 +23,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from src.modbus_poller import ModbusPoller
 from src.database import DatabaseManager
 from src.config_manager import ConfigManager
+from src.web_server import VulcanSentinelWebServer
 
 # Configure logging with error handling
 def setup_logging():
@@ -59,6 +60,7 @@ class VulcanSentinelApp:
         self.config_manager = ConfigManager()
         self.db_manager = DatabaseManager()
         self.modbus_poller = None
+        self.web_server = None
         self.running = False
         self.services = {}
         
@@ -92,6 +94,14 @@ class VulcanSentinelApp:
             logger.info("Initializing Modbus poller...")
             self.modbus_poller = ModbusPoller()
             
+            # Initialize web server
+            logger.info("Initializing web server...")
+            api_config = self.config.get('api', {})
+            self.web_server = VulcanSentinelWebServer(
+                host=api_config.get('host', '0.0.0.0'),
+                port=api_config.get('port', 8080)
+            )
+            
             # Log initialization event
             self.db_manager.log_event(
                 event_type="SYSTEM_STARTUP",
@@ -121,6 +131,17 @@ class VulcanSentinelApp:
                 logger.info("Starting Modbus poller...")
                 self.modbus_poller.start()
                 self.services['modbus_poller'] = self.modbus_poller
+            
+            # Start web server in a separate thread
+            if self.web_server:
+                logger.info("Starting web server...")
+                import threading
+                web_thread = threading.Thread(
+                    target=self.web_server.start,
+                    daemon=True
+                )
+                web_thread.start()
+                self.services['web_server'] = self.web_server
             
             # Log startup event
             self.db_manager.log_event(
