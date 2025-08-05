@@ -150,6 +150,7 @@ class ModbusPoller:
                 return float(temp)
             else:
                 logger.warning(f"Error reading register {register_name} from {device.name}")
+                return None
         except ModbusException as e:
             logger.error(f"Modbus error reading {register_name} from {device.name}: {e}")
             device.connection_status = False
