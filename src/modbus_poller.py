@@ -132,31 +132,24 @@ class ModbusPoller:
     
     def _read_register(self, device: ModbusDevice, register_name: str, register_address: int) -> Optional[float]:
         """Read a single register from a device - using exact same method as working script"""
-        try:
-            if not device.client or not device.client.is_socket_open():
-                if not self._connect_device(device):
-                    return None
-            
-            # Use exact same method as the working single sensor script
-            result = device.client.read_input_registers(register_address, 2, slave=device.slave_id)
-            if not result.isError():
-                decoder = BinaryPayloadDecoder.fromRegisters(
-                    result.registers,
-                    byteorder=Endian.Big,
-                    wordorder=Endian.Little
-                )
-                temp = decoder.decode_32bit_float()
-                logger.debug(f"Read temperature from {device.name}: {temp}°F")
-                return float(temp)
-            else:
-                logger.warning(f"Error reading register {register_name} from {device.name}")
+        # Check connection first
+        if not device.client or not device.client.is_socket_open():
+            if not self._connect_device(device):
                 return None
-        except ModbusException as e:
-            logger.error(f"Modbus error reading {register_name} from {device.name}: {e}")
-            device.connection_status = False
-            return None
-        except Exception as e:
-            logger.error(f"Unexpected error reading {register_name} from {device.name}: {str(e)}")
+        
+        # Use exact same method as the working single sensor script - NO exception handling around decoder
+        result = device.client.read_input_registers(register_address, 2, slave=device.slave_id)
+        if not result.isError():
+            decoder = BinaryPayloadDecoder.fromRegisters(
+                result.registers,
+                byteorder=Endian.Big,
+                wordorder=Endian.Little
+            )
+            temp = decoder.decode_32bit_float()
+            logger.debug(f"Read temperature from {device.name}: {temp}°F")
+            return float(temp)
+        else:
+            logger.warning(f"Error reading register {register_name} from {device.name}")
             return None
     
     def _poll_device(self, device: ModbusDevice):
