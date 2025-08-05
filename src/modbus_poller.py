@@ -143,8 +143,8 @@ class ModbusPoller:
             logger.debug(f"Raw registers from {device.name}: {result.registers}")
             decoder = BinaryPayloadDecoder.fromRegisters(
                 result.registers,
-                byteorder="big",
-                wordorder="little"
+                byteorder=Endian.Big,
+                wordorder=Endian.Little
             )
             temp = decoder.decode_32bit_float()
             logger.debug(f"Read temperature from {device.name}: {temp}°F")
