@@ -138,7 +138,7 @@ class ModbusPoller:
                 return None
         
         # Use exact same method as the working single sensor script - NO exception handling around decoder
-        result = device.client.read_input_registers(register_address, 2, slave=device.slave_id)
+        result = device.client.read_input_registers(register_address, 2, slave=1)
         if not result.isError():
             logger.debug(f"Raw registers from {device.name}: {result.registers}")
             decoder = BinaryPayloadDecoder.fromRegisters(
