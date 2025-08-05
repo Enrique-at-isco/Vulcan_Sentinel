@@ -114,9 +114,14 @@ class VulcanSentinelWebServer:
                     .btn:hover {{ background: #5a6fd8; }}
                     .refresh {{ text-align: right; margin-bottom: 10px; }}
                     .refresh-btn {{ background: #28a745; border: none; color: white; padding: 10px 20px; border-radius: 5px; cursor: pointer; }}
-                    .refresh-btn:hover {{ background: #218838; }}
-                </style>
-            </head>
+                                         .refresh-btn:hover {{ background: #218838; }}
+                     .chart-container {{ background: white; padding: 20px; border-radius: 10px; box-shadow: 0 2px 10px rgba(0,0,0,0.1); margin-bottom: 20px; }}
+                     .chart-container h3 {{ margin: 0 0 15px 0; color: #333; border-bottom: 2px solid #667eea; padding-bottom: 10px; }}
+                     .chart-wrapper {{ position: relative; height: 400px; }}
+                 </style>
+                 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+                 <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns"></script>
+             </head>
             <body>
                 <div class="container">
                     <div class="header">
@@ -182,24 +187,182 @@ class VulcanSentinelWebServer:
                                 </div>
                             </div>
                         </div>
-                    </div>
-                    
-                    <div class="actions">
-                        <h3>📥 Data Export</h3>
-                        <a href="/api/csv/preheat" class="btn">📄 Preheat CSV</a>
-                        <a href="/api/csv/main_heat" class="btn">📄 Main Heat CSV</a>
-                        <a href="/api/csv/rib_heat" class="btn">📄 Rib Heat CSV</a>
-                        <a href="/api/readings/history?days=7" class="btn">📊 7-Day History</a>
-                        <a href="/api/readings/history?days=30" class="btn">📊 30-Day History</a>
-                    </div>
-                </div>
+                                         </div>
+                     
+                     <div class="chart-container">
+                         <h3>📈 Temperature Time Series</h3>
+                         <div class="chart-wrapper">
+                             <canvas id="temperatureChart"></canvas>
+                         </div>
+                     </div>
+                     
+                     <div class="actions">
+                         <h3>📥 Data Export</h3>
+                         <a href="/api/csv/preheat" class="btn">📄 Preheat CSV</a>
+                         <a href="/api/csv/main_heat" class="btn">📄 Main Heat CSV</a>
+                         <a href="/api/csv/rib_heat" class="btn">📄 Rib Heat CSV</a>
+                         <a href="/api/readings/history?days=7" class="btn">📊 7-Day History</a>
+                         <a href="/api/readings/history?days=30" class="btn">📊 30-Day History</a>
+                     </div>
+                 </div>
                 
-                <script>
-                    // Auto-refresh every 30 seconds
-                    setTimeout(function() {{
-                        location.reload();
-                    }}, 30000);
-                </script>
+                                 <script>
+                     // Chart configuration
+                     const chartColors = {{
+                         preheat: 'rgba(255, 99, 132, 1)',
+                         main_heat: 'rgba(54, 162, 235, 1)',
+                         rib_heat: 'rgba(75, 192, 192, 1)'
+                     }};
+                     
+                     const chartBorderColors = {{
+                         preheat: 'rgba(255, 99, 132, 0.8)',
+                         main_heat: 'rgba(54, 162, 235, 0.8)',
+                         rib_heat: 'rgba(75, 192, 192, 0.8)'
+                     }};
+                     
+                     // Initialize chart
+                     const ctx = document.getElementById('temperatureChart').getContext('2d');
+                     const temperatureChart = new Chart(ctx, {{
+                         type: 'line',
+                         data: {{
+                             labels: [],
+                             datasets: [
+                                 {{
+                                     label: 'Preheat',
+                                     data: [],
+                                     borderColor: chartColors.preheat,
+                                     backgroundColor: chartBorderColors.preheat,
+                                     borderWidth: 2,
+                                     fill: false,
+                                     tension: 0.1
+                                 }},
+                                 {{
+                                     label: 'Main Heat',
+                                     data: [],
+                                     borderColor: chartColors.main_heat,
+                                     backgroundColor: chartBorderColors.main_heat,
+                                     borderWidth: 2,
+                                     fill: false,
+                                     tension: 0.1
+                                 }},
+                                 {{
+                                     label: 'Rib Heat',
+                                     data: [],
+                                     borderColor: chartColors.rib_heat,
+                                     backgroundColor: chartBorderColors.rib_heat,
+                                     borderWidth: 2,
+                                     fill: false,
+                                     tension: 0.1
+                                 }}
+                             ]
+                         }},
+                         options: {{
+                             responsive: true,
+                             maintainAspectRatio: false,
+                             plugins: {{
+                                 title: {{
+                                     display: true,
+                                     text: 'Temperature Readings Over Time'
+                                 }},
+                                 legend: {{
+                                     display: true,
+                                     position: 'top'
+                                 }}
+                             }},
+                             scales: {{
+                                 x: {{
+                                     type: 'time',
+                                     time: {{
+                                         unit: 'hour',
+                                         displayFormats: {{
+                                             hour: 'MMM dd, HH:mm'
+                                         }}
+                                     }},
+                                     title: {{
+                                         display: true,
+                                         text: 'Time'
+                                     }}
+                                 }},
+                                 y: {{
+                                     title: {{
+                                         display: true,
+                                         text: 'Temperature (°F)'
+                                     }},
+                                     beginAtZero: false
+                                 }}
+                             }},
+                             interaction: {{
+                                 intersect: false,
+                                 mode: 'index'
+                             }}
+                         }}
+                     }});
+                     
+                     // Function to update chart data
+                     async function updateChartData() {{
+                         try {{
+                             const response = await fetch('/api/readings/history?days=1');
+                             const data = await response.json();
+                             
+                             // Clear existing data
+                             temperatureChart.data.labels = [];
+                             temperatureChart.data.datasets.forEach(dataset => {{
+                                 dataset.data = [];
+                             }});
+                             
+                             // Process data for each device
+                             const deviceData = {{
+                                 preheat: [],
+                                 main_heat: [],
+                                 rib_heat: []
+                             }};
+                             
+                             // Collect data points
+                             Object.keys(data).forEach(deviceName => {{
+                                 if (data[deviceName] && Array.isArray(data[deviceName])) {{
+                                     data[deviceName].forEach(reading => {{
+                                         const timestamp = new Date(reading.timestamp);
+                                         const temp = reading.temperature;
+                                         
+                                         if (deviceName === 'preheat') {{
+                                             deviceData.preheat.push({{x: timestamp, y: temp}});
+                                         }} else if (deviceName === 'main_heat') {{
+                                             deviceData.main_heat.push({{x: timestamp, y: temp}});
+                                         }} else if (deviceName === 'rib_heat') {{
+                                             deviceData.rib_heat.push({{x: timestamp, y: temp}});
+                                         }}
+                                     }});
+                                 }}
+                             }});
+                             
+                             // Sort data by timestamp
+                             Object.keys(deviceData).forEach(device => {{
+                                 deviceData[device].sort((a, b) => a.x - b.x);
+                             }});
+                             
+                             // Update chart datasets
+                             temperatureChart.data.datasets[0].data = deviceData.preheat;
+                             temperatureChart.data.datasets[1].data = deviceData.main_heat;
+                             temperatureChart.data.datasets[2].data = deviceData.rib_heat;
+                             
+                             temperatureChart.update();
+                             
+                         }} catch (error) {{
+                             console.error('Error updating chart data:', error);
+                         }}
+                     }}
+                     
+                     // Load chart data on page load
+                     updateChartData();
+                     
+                     // Auto-refresh chart data every 30 seconds
+                     setInterval(updateChartData, 30000);
+                     
+                     // Auto-refresh page every 5 minutes
+                     setTimeout(function() {{
+                         location.reload();
+                     }}, 300000);
+                 </script>
             </body>
             </html>
             """
