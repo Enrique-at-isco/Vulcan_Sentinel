@@ -5,7 +5,7 @@ devices:
     port: 502
     slave_id: 1
     registers:
-      temperature: 360
+      temperature: 402
     polling_interval: 20
     description: "Preheat temperature sensor for process monitoring (Fahrenheit)"
     
@@ -15,7 +15,7 @@ devices:
     port: 502
     slave_id: 1
     registers:
-      temperature: 360
+      temperature: 402
     polling_interval: 20
     description: "Main heat temperature sensor for primary monitoring (Fahrenheit)"
     
@@ -25,6 +25,6 @@ devices:
     port: 502
     slave_id: 1
     registers:
-      temperature: 360
+      temperature: 402
     polling_interval: 20
     description: "Rib heat temperature sensor for secondary monitoring (Fahrenheit)" 
