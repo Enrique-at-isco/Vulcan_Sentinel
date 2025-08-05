@@ -144,8 +144,8 @@ class ModbusPoller:
             try:
                 decoder = BinaryPayloadDecoder.fromRegisters(
                     result.registers,
-                    byteorder=0,  # Big endian
-                    wordorder=1   # Little endian
+                    byteorder=Endian.BIG,
+                    wordorder=Endian.LITTLE
                 )
                 logger.debug(f"Created decoder for {device.name}")
                 
