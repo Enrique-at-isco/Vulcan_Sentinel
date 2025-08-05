@@ -79,6 +79,14 @@ class VulcanSentinelWebServer:
             readings = self._get_latest_readings()
             status = self._get_system_status()
             
+            # Ensure readings is a dictionary
+            if not isinstance(readings, dict):
+                readings = {}
+            
+            # Ensure status has devices
+            if not isinstance(status, dict) or 'devices' not in status:
+                status = {'devices': {}}
+            
             html = f"""
             <!DOCTYPE html>
             <html>
@@ -238,7 +246,11 @@ class VulcanSentinelWebServer:
             
         except Exception as e:
             logger.error(f"Error getting system status: {e}")
-            return {'error': str(e)}
+            return {
+                'timestamp': datetime.now().isoformat(),
+                'devices': {},
+                'system_status': 'error'
+            }
     
     def _get_latest_readings(self):
         """Get latest temperature readings"""
@@ -274,7 +286,7 @@ class VulcanSentinelWebServer:
             
         except Exception as e:
             logger.error(f"Error getting latest readings: {e}")
-            return {'error': str(e)}
+            return {}
     
     def _get_historical_data(self, days=1):
         """Get historical data for the specified number of days"""
@@ -307,7 +319,7 @@ class VulcanSentinelWebServer:
             
         except Exception as e:
             logger.error(f"Error getting historical data: {e}")
-            return {'error': str(e)}
+            return {}
     
     def _get_device_info(self):
         """Get device information"""
@@ -346,7 +358,7 @@ class VulcanSentinelWebServer:
             
         except Exception as e:
             logger.error(f"Error getting device info: {e}")
-            return {'error': str(e)}
+            return {'devices': []}
     
     def _get_csv_data(self, device_name):
         """Generate CSV data for a specific device"""
