@@ -141,24 +141,32 @@ class ModbusPoller:
         result = device.client.read_input_registers(register_address, 2, slave=1)
         if not result.isError():
             logger.debug(f"Raw registers from {device.name}: {result.registers}")
-            decoder = BinaryPayloadDecoder.fromRegisters(
-                result.registers,
-                byteorder=0,  # Big endian
-                wordorder=1   # Little endian
-            )
-            temp = decoder.decode_32bit_float()
-            logger.debug(f"Read temperature from {device.name}: {temp}°F (type: {type(temp)})")
-            # Ensure we return a float value
-            if temp is not None:
-                try:
-                    float_temp = float(temp)
-                    logger.debug(f"Converted temperature to float: {float_temp}")
-                    return float_temp
-                except (ValueError, TypeError) as e:
-                    logger.error(f"Failed to convert temperature to float: {temp}, error: {e}")
+            try:
+                decoder = BinaryPayloadDecoder.fromRegisters(
+                    result.registers,
+                    byteorder=0,  # Big endian
+                    wordorder=1   # Little endian
+                )
+                logger.debug(f"Created decoder for {device.name}")
+                
+                temp = decoder.decode_32bit_float()
+                logger.debug(f"Decoded temperature from {device.name}: {temp} (type: {type(temp)})")
+                
+                # Ensure we return a float value
+                if temp is not None:
+                    try:
+                        float_temp = float(temp)
+                        logger.debug(f"Converted temperature to float: {float_temp}")
+                        return float_temp
+                    except (ValueError, TypeError) as e:
+                        logger.error(f"Failed to convert temperature to float: {temp}, error: {e}")
+                        return None
+                else:
+                    logger.warning(f"Decoded temperature is None for {device.name}")
                     return None
-            else:
-                logger.warning(f"Decoded temperature is None for {device.name}")
+            except Exception as e:
+                logger.error(f"Error in decoding for {device.name}: {e}")
+                logger.error(f"Exception type: {type(e).__name__}")
                 return None
         else:
             logger.warning(f"Error reading register {register_name} from {device.name}")
