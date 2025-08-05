@@ -258,25 +258,27 @@ class VulcanSentinelWebServer:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Get latest reading for each device
+            # Get latest temperature reading for each device
             cursor.execute("""
-                SELECT device_name, temperature, timestamp
+                SELECT device_name, value, timestamp
                 FROM readings r1
-                WHERE timestamp = (
+                WHERE register_name = 'temperature'
+                AND timestamp = (
                     SELECT MAX(timestamp) 
                     FROM readings r2 
-                    WHERE r2.device_name = r1.device_name
+                    WHERE r2.device_name = r1.device_name 
+                    AND r2.register_name = 'temperature'
                 )
             """)
             
             readings = {}
             for row in cursor.fetchall():
-                device_name, temperature, timestamp = row
+                device_name, value, timestamp = row
                 last_reading_dt = datetime.fromisoformat(timestamp)
                 connected = (datetime.now() - last_reading_dt) < timedelta(minutes=5)
                 
                 readings[device_name] = {
-                    'temperature': temperature,
+                    'temperature': value,
                     'timestamp': timestamp,
                     'connected': connected
                 }
@@ -298,19 +300,20 @@ class VulcanSentinelWebServer:
             start_date = datetime.now() - timedelta(days=days)
             
             cursor.execute("""
-                SELECT device_name, temperature, timestamp
+                SELECT device_name, value, timestamp
                 FROM readings
-                WHERE timestamp >= ?
+                WHERE register_name = 'temperature'
+                AND timestamp >= ?
                 ORDER BY timestamp DESC
             """, (start_date.isoformat(),))
             
             data = {}
             for row in cursor.fetchall():
-                device_name, temperature, timestamp = row
+                device_name, value, timestamp = row
                 if device_name not in data:
                     data[device_name] = []
                 data[device_name].append({
-                    'temperature': temperature,
+                    'temperature': value,
                     'timestamp': timestamp
                 })
             
@@ -327,16 +330,17 @@ class VulcanSentinelWebServer:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Get device statistics
+            # Get device statistics for temperature readings
             cursor.execute("""
                 SELECT device_name, 
                        COUNT(*) as reading_count,
                        MIN(timestamp) as first_reading,
                        MAX(timestamp) as last_reading,
-                       AVG(temperature) as avg_temperature,
-                       MIN(temperature) as min_temperature,
-                       MAX(temperature) as max_temperature
+                       AVG(value) as avg_temperature,
+                       MIN(value) as min_temperature,
+                       MAX(value) as max_temperature
                 FROM readings
+                WHERE register_name = 'temperature'
                 GROUP BY device_name
             """)
             
@@ -366,11 +370,11 @@ class VulcanSentinelWebServer:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Get all readings for the device
+            # Get all temperature readings for the device
             cursor.execute("""
-                SELECT timestamp, temperature
+                SELECT timestamp, value
                 FROM readings
-                WHERE device_name = ?
+                WHERE device_name = ? AND register_name = 'temperature'
                 ORDER BY timestamp DESC
             """, (device_name,))
             
@@ -380,8 +384,8 @@ class VulcanSentinelWebServer:
             writer.writerow(['Timestamp', 'Temperature (°F)'])
             
             for row in cursor.fetchall():
-                timestamp, temperature = row
-                writer.writerow([timestamp, temperature])
+                timestamp, value = row
+                writer.writerow([timestamp, value])
             
             conn.close()
             
