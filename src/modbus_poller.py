@@ -147,8 +147,19 @@ class ModbusPoller:
                 wordorder=1   # Little endian
             )
             temp = decoder.decode_32bit_float()
-            logger.debug(f"Read temperature from {device.name}: {temp}°F")
-            return float(temp)
+            logger.debug(f"Read temperature from {device.name}: {temp}°F (type: {type(temp)})")
+            # Ensure we return a float value
+            if temp is not None:
+                try:
+                    float_temp = float(temp)
+                    logger.debug(f"Converted temperature to float: {float_temp}")
+                    return float_temp
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Failed to convert temperature to float: {temp}, error: {e}")
+                    return None
+            else:
+                logger.warning(f"Decoded temperature is None for {device.name}")
+                return None
         else:
             logger.warning(f"Error reading register {register_name} from {device.name}")
             return None
