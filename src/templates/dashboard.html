@@ -1,0 +1,94 @@
+{% extends "base.html" %}
+
+{% block title %}Vulcan Sentinel Dashboard{% endblock %}
+
+{% block content %}
+<div class="container">
+    <div class="header">
+        <h1>🔥 Vulcan Sentinel</h1>
+        <p>Industrial Temperature Monitoring System</p>
+    </div>
+    
+    <div class="refresh">
+        <button class="refresh-btn" onclick="location.reload()">🔄 Refresh Data</button>
+        <button class="refresh-btn" onclick="cleanupDuplicates()" style="background: #dc3545; margin-left: 10px;">🧹 Clean Duplicates</button>
+    </div>
+    
+    <div class="status-grid">
+        <div class="status-card">
+            <h3>🌡️ Current Temperatures</h3>
+            {% for device_name, data in readings.items() %}
+                {% if data.connected %}
+                    <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                        <div style="font-weight: bold; color: #333;">{{ device_name.replace('_', ' ').title() }}</div>
+                        <div class="temperature">{{ data.temperature }}°F</div>
+                        <div style="text-align: center; color: #666; font-size: 0.9em;">Last updated: {{ format_timestamp_cst(data.timestamp) }}</div>
+                    </div>
+                {% else %}
+                    <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                        <div style="font-weight: bold; color: #333;">{{ device_name.replace('_', ' ').title() }}</div>
+                        <div style="text-align: center; color: #dc3545; font-size: 1.2em;">⚠️ Disconnected</div>
+                    </div>
+                {% endif %}
+            {% endfor %}
+        </div>
+        
+        <div class="status-card">
+            <h3>📊 System Status</h3>
+            {% for device_name, data in status.devices.items() %}
+                {% set status_class = "connected" if data.connected else "disconnected" %}
+                {% set status_text = "🟢 Connected" if data.connected else "🔴 Disconnected" %}
+                <div class="device-info">
+                    <span>{{ device_name.replace('_', ' ').title() }}:</span>
+                    <span class="{{ status_class }}">{{ status_text }}</span>
+                </div>
+            {% endfor %}
+            
+            <div style="margin-top: 20px; padding-top: 15px; border-top: 1px solid #eee;">
+                <div class="device-info">
+                    <span>System Status:</span>
+                    <span class="connected">🟢 Running</span>
+                </div>
+                <div class="device-info">
+                    <span>Last Update:</span>
+                    <span>{{ current_time }}</span>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <div class="chart-container">
+        <h3>📈 Temperature Time Series</h3>
+        <div class="chart-wrapper">
+            <canvas id="temperatureChart"></canvas>
+        </div>
+    </div>
+    
+    <div class="actions">
+        <h3>📥 Data Export</h3>
+        <a href="/api/csv/preheat" class="btn">📄 Preheat CSV</a>
+        <a href="/api/csv/main_heat" class="btn">📄 Main Heat CSV</a>
+        <a href="/api/csv/rib_heat" class="btn">📄 Rib Heat CSV</a>
+        <a href="/api/readings/history?days=7" class="btn">📊 7-Day History</a>
+        <a href="/api/readings/history?days=30" class="btn">📊 30-Day History</a>
+    </div>
+    
+    <div class="footer">
+        <h3>💾 Storage Information</h3>
+        <div class="storage-grid">
+            <div class="storage-card">
+                <h4>System Storage</h4>
+                <div id="system-storage">Loading...</div>
+            </div>
+            <div class="storage-card">
+                <h4>Database Size</h4>
+                <div id="database-size">Loading...</div>
+            </div>
+            <div class="storage-card">
+                <h4>Data Consumption</h4>
+                <div id="data-consumption">Loading...</div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %} 
