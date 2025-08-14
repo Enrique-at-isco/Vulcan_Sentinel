@@ -137,7 +137,7 @@ class ReportGenerator:
         """Get all process data for the specified time range"""
         try:
             # Get device configurations
-            devices_config = self.config_manager.get_devices_config()
+            devices_config = self.config_manager.load_devices_config()
             
             process_data = {
                 'sensors': {},
