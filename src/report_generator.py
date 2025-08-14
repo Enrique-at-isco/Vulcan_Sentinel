@@ -34,7 +34,7 @@ class ReportGenerator:
     def __init__(self, db_manager, config_manager):
         self.db_manager = db_manager
         self.config_manager = config_manager
-        self.reports_dir = "reports"
+        self.reports_dir = os.path.join(os.getcwd(), "reports")
         self._ensure_reports_directory()
         self.report_counter = self._load_report_counter()
         
