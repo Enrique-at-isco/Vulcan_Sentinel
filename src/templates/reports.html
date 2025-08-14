@@ -1,0 +1,306 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Vulcan Sentinel - Report Generation</title>
+    <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
+    <style>
+        .report-form {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        
+        .form-group {
+            margin-bottom: 15px;
+        }
+        
+        .form-group label {
+            display: block;
+            margin-bottom: 5px;
+            font-weight: bold;
+        }
+        
+        .form-group input, .form-group select {
+            width: 100%;
+            padding: 8px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-size: 14px;
+        }
+        
+        .btn {
+            background: #007bff;
+            color: white;
+            padding: 10px 20px;
+            border: none;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 14px;
+        }
+        
+        .btn:hover {
+            background: #0056b3;
+        }
+        
+        .btn-secondary {
+            background: #6c757d;
+        }
+        
+        .btn-secondary:hover {
+            background: #545b62;
+        }
+        
+        .report-history {
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+        
+        .report-table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 15px;
+        }
+        
+        .report-table th, .report-table td {
+            padding: 10px;
+            text-align: left;
+            border-bottom: 1px solid #ddd;
+        }
+        
+        .report-table th {
+            background: #f8f9fa;
+            font-weight: bold;
+        }
+        
+        .status-success {
+            color: #28a745;
+        }
+        
+        .status-error {
+            color: #dc3545;
+        }
+        
+        .loading {
+            display: none;
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            border: 4px solid #f3f3f3;
+            border-top: 4px solid #007bff;
+            border-radius: 50%;
+            width: 40px;
+            height: 40px;
+            animation: spin 1s linear infinite;
+            margin: 0 auto;
+        }
+        
+        @keyframes spin {
+            0% { transform: rotate(0deg); }
+            100% { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>Vulcan Sentinel - Report Generation</h1>
+            <nav>
+                <a href="/" class="nav-link">Dashboard</a>
+                <a href="/reports" class="nav-link active">Reports</a>
+            </nav>
+        </header>
+
+        <main>
+            <div class="report-form">
+                <h2>Generate Work Order Report</h2>
+                <form id="reportForm">
+                    <div class="form-group">
+                        <label for="workOrderNumber">Work Order Number:</label>
+                        <input type="text" id="workOrderNumber" name="workOrderNumber" required 
+                               placeholder="e.g., WO-12345">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="startTime">Start Time:</label>
+                        <input type="datetime-local" id="startTime" name="startTime" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="endTime">End Time:</label>
+                        <input type="datetime-local" id="endTime" name="endTime" required>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="machineId">Machine/Line ID:</label>
+                        <input type="text" id="machineId" name="machineId" 
+                               placeholder="e.g., Line-07" value="Line-07">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="outputFormat">Output Format:</label>
+                        <select id="outputFormat" name="outputFormat">
+                            <option value="pdf">PDF Report</option>
+                            <option value="thermal">Thermal Receipt</option>
+                        </select>
+                    </div>
+                    
+                    <button type="submit" class="btn">Generate Report</button>
+                </form>
+                
+                <div class="loading" id="loading">
+                    <div class="spinner"></div>
+                    <p>Generating report...</p>
+                </div>
+                
+                <div id="result" style="margin-top: 20px;"></div>
+            </div>
+
+            <div class="report-history">
+                <h2>Report History</h2>
+                <button class="btn btn-secondary" onclick="loadReportHistory()">Refresh History</button>
+                <div id="historyTable"></div>
+            </div>
+        </main>
+    </div>
+
+    <script>
+        // Set default times (last hour)
+        function setDefaultTimes() {
+            const now = new Date();
+            const oneHourAgo = new Date(now.getTime() - 60 * 60 * 1000);
+            
+            document.getElementById('startTime').value = oneHourAgo.toISOString().slice(0, 16);
+            document.getElementById('endTime').value = now.toISOString().slice(0, 16);
+        }
+        
+        // Generate report
+        document.getElementById('reportForm').addEventListener('submit', async function(e) {
+            e.preventDefault();
+            
+            const formData = new FormData(e.target);
+            const data = {
+                work_order_number: formData.get('workOrderNumber'),
+                start_time: formData.get('startTime') + ':00',
+                end_time: formData.get('endTime') + ':00',
+                machine_id: formData.get('machineId'),
+                output_format: formData.get('outputFormat')
+            };
+            
+            // Show loading
+            document.getElementById('loading').style.display = 'block';
+            document.getElementById('result').innerHTML = '';
+            
+            try {
+                const response = await fetch('/api/reports/generate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify(data)
+                });
+                
+                const result = await response.json();
+                
+                if (result.success) {
+                    const report = result.report;
+                    document.getElementById('result').innerHTML = `
+                        <div class="status-success">
+                            <h3>Report Generated Successfully!</h3>
+                            <p><strong>Report ID:</strong> ${report.report_id}</p>
+                            <p><strong>Work Order:</strong> ${report.work_order_number}</p>
+                            <p><strong>Format:</strong> ${report.output_format.toUpperCase()}</p>
+                            <p><strong>Generated:</strong> ${new Date(report.generated_at).toLocaleString()}</p>
+                            <a href="/api/reports/download/${report.report_id}" class="btn">Download Report</a>
+                            <a href="/api/reports/csv/${report.report_id}" class="btn btn-secondary">Export CSV</a>
+                        </div>
+                    `;
+                    
+                    // Refresh history
+                    loadReportHistory();
+                } else {
+                    document.getElementById('result').innerHTML = `
+                        <div class="status-error">
+                            <h3>Error Generating Report</h3>
+                            <p>${result.error}</p>
+                        </div>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('result').innerHTML = `
+                    <div class="status-error">
+                        <h3>Error</h3>
+                        <p>${error.message}</p>
+                    </div>
+                `;
+            } finally {
+                document.getElementById('loading').style.display = 'none';
+            }
+        });
+        
+        // Load report history
+        async function loadReportHistory() {
+            try {
+                const response = await fetch('/api/reports/history?limit=20');
+                const result = await response.json();
+                
+                if (result.success) {
+                    const reports = result.reports;
+                    let tableHTML = `
+                        <table class="report-table">
+                            <thead>
+                                <tr>
+                                    <th>Report ID</th>
+                                    <th>Work Order</th>
+                                    <th>Machine</th>
+                                    <th>Format</th>
+                                    <th>Generated</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                    `;
+                    
+                    reports.forEach(report => {
+                        tableHTML += `
+                            <tr>
+                                <td>${report.report_id}</td>
+                                <td>${report.work_order_number}</td>
+                                <td>${report.machine_id}</td>
+                                <td>${report.output_format.toUpperCase()}</td>
+                                <td>${new Date(report.generated_at).toLocaleString()}</td>
+                                <td>
+                                    <a href="/api/reports/download/${report.report_id}" class="btn">Download</a>
+                                    <a href="/api/reports/csv/${report.report_id}" class="btn btn-secondary">CSV</a>
+                                </td>
+                            </tr>
+                        `;
+                    });
+                    
+                    tableHTML += '</tbody></table>';
+                    document.getElementById('historyTable').innerHTML = tableHTML;
+                } else {
+                    document.getElementById('historyTable').innerHTML = `
+                        <p class="status-error">Error loading report history: ${result.error}</p>
+                    `;
+                }
+            } catch (error) {
+                document.getElementById('historyTable').innerHTML = `
+                    <p class="status-error">Error: ${error.message}</p>
+                `;
+            }
+        }
+        
+        // Initialize page
+        setDefaultTimes();
+        loadReportHistory();
+    </script>
+</body>
+</html>

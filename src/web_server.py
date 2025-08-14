@@ -6,6 +6,7 @@ Provides a web interface for viewing:
 - Historical data
 - System status
 - CSV downloads
+- Report generation
 """
 
 import os
@@ -26,10 +27,14 @@ logger = logging.getLogger(__name__)
 class VulcanSentinelWebServer:
     """Flask web server for Vulcan Sentinel"""
     
-    def __init__(self, db_path="data/vulcan_sentinel.db", host="0.0.0.0", port=8080):
+    def __init__(self, db_path="data/vulcan_sentinel.db", host="0.0.0.0", port=8080, 
+                 db_manager=None, config_manager=None, report_generator=None):
         self.db_path = db_path
         self.host = host
         self.port = port
+        self.db_manager = db_manager
+        self.config_manager = config_manager
+        self.report_generator = report_generator
         
         # Initialize Flask app with template folder
         template_dir = os.path.join(os.path.dirname(__file__), 'templates')
@@ -50,6 +55,11 @@ class VulcanSentinelWebServer:
         def index():
             """Main dashboard page"""
             return self._get_dashboard()
+        
+        @self.app.route('/reports')
+        def reports():
+            """Report generation page"""
+            return render_template('reports.html')
         
         @self.app.route('/api/status')
         def api_status():
@@ -91,6 +101,28 @@ class VulcanSentinelWebServer:
         def api_storage_info():
             """Get storage usage information"""
             return jsonify(self._get_storage_info())
+        
+        # Report generation endpoints
+        @self.app.route('/api/reports/generate', methods=['POST'])
+        def api_generate_report():
+            """Generate a work order report"""
+            return jsonify(self._generate_report())
+        
+        @self.app.route('/api/reports/history')
+        def api_report_history():
+            """Get report history"""
+            limit = request.args.get('limit', 50, type=int)
+            return jsonify(self._get_report_history(limit))
+        
+        @self.app.route('/api/reports/download/<report_id>')
+        def api_download_report(report_id):
+            """Download a specific report"""
+            return self._download_report(report_id)
+        
+        @self.app.route('/api/reports/csv/<report_id>')
+        def api_export_csv(report_id):
+            """Export report data to CSV"""
+            return self._export_report_csv(report_id)
     
     def _get_dashboard(self):
         """Generate dashboard HTML using Flask templates"""
@@ -467,6 +499,127 @@ class VulcanSentinelWebServer:
         except Exception as e:
             logger.error(f"Error calculating data consumption: {e}")
             return 0
+    
+    def _generate_report(self):
+        """Generate a work order report"""
+        try:
+            if not self.report_generator:
+                return {"error": "Report generator not available"}
+            
+            data = request.get_json()
+            if not data:
+                return {"error": "No data provided"}
+            
+            # Extract parameters
+            work_order_number = data.get('work_order_number', 'WO-UNKNOWN')
+            start_time_str = data.get('start_time')
+            end_time_str = data.get('end_time')
+            machine_id = data.get('machine_id', 'Line-07')
+            output_format = data.get('output_format', 'pdf')
+            
+            # Validate required fields
+            if not start_time_str or not end_time_str:
+                return {"error": "Start time and end time are required"}
+            
+            try:
+                start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
+                end_time = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
+            except ValueError as e:
+                return {"error": f"Invalid date format: {e}"}
+            
+            # Generate report
+            report_metadata = self.report_generator.generate_work_order_report(
+                work_order_number=work_order_number,
+                start_time=start_time,
+                end_time=end_time,
+                machine_id=machine_id,
+                output_format=output_format
+            )
+            
+            return {
+                "success": True,
+                "report": report_metadata
+            }
+            
+        except Exception as e:
+            logger.error(f"Error generating report: {e}")
+            return {"error": str(e)}
+    
+    def _get_report_history(self, limit=50):
+        """Get report history"""
+        try:
+            if not self.report_generator:
+                return {"error": "Report generator not available"}
+            
+            history = self.report_generator.get_report_history(limit)
+            return {
+                "success": True,
+                "reports": history
+            }
+            
+        except Exception as e:
+            logger.error(f"Error getting report history: {e}")
+            return {"error": str(e)}
+    
+    def _download_report(self, report_id):
+        """Download a specific report"""
+        try:
+            if not self.report_generator:
+                return jsonify({"error": "Report generator not available"})
+            
+            # Get report metadata
+            history = self.report_generator.get_report_history(1000)
+            report_metadata = None
+            
+            for report in history:
+                if report.get('report_id') == report_id:
+                    report_metadata = report
+                    break
+            
+            if not report_metadata:
+                return jsonify({"error": "Report not found"})
+            
+            file_path = report_metadata.get('file_path')
+            if not file_path or not os.path.exists(file_path):
+                return jsonify({"error": "Report file not found"})
+            
+            # Determine file type
+            if file_path.endswith('.pdf'):
+                mimetype = 'application/pdf'
+            elif file_path.endswith('.txt'):
+                mimetype = 'text/plain'
+            else:
+                mimetype = 'application/octet-stream'
+            
+            return send_file(
+                file_path,
+                mimetype=mimetype,
+                as_attachment=True,
+                download_name=os.path.basename(file_path)
+            )
+            
+        except Exception as e:
+            logger.error(f"Error downloading report: {e}")
+            return jsonify({"error": str(e)})
+    
+    def _export_report_csv(self, report_id):
+        """Export report data to CSV"""
+        try:
+            if not self.report_generator:
+                return jsonify({"error": "Report generator not available"})
+            
+            csv_path = self.report_generator.export_report_csv(report_id)
+            
+            return send_file(
+                csv_path,
+                mimetype='text/csv',
+                as_attachment=True,
+                download_name=f"report_data_{report_id}.csv"
+            )
+            
+        except Exception as e:
+            logger.error(f"Error exporting CSV: {e}")
+            return jsonify({"error": str(e)})
     
     def start(self):
         """Start the web server"""

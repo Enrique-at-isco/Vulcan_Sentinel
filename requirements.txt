@@ -1,43 +1,17 @@
 # Core dependencies
+flask==2.3.3
 pymodbus==3.5.4
-PyYAML==6.0.1
-requests==2.31.0
+pyyaml==6.0.1
+sqlite3
 
-# Web framework for API
-Flask==3.0.0
-Flask-CORS==4.0.0
-gunicorn==21.2.0
+# Report generation dependencies
+matplotlib==3.7.2
+reportlab==4.0.4
+numpy==1.24.3
 
-# Database
-SQLAlchemy==2.0.23
-
-# Data processing and reporting
-pandas==2.1.4
-numpy==1.25.2
-matplotlib==3.8.2
-reportlab==4.0.7
-
-# Printer integration
-#pycups==2.0.1
-python-escpos==3.0a8
-Pillow==10.1.0
-
-# Logging and monitoring
-structlog==23.2.0
-
-# Testing
-pytest==7.4.3
+# Development and testing
+pytest==7.4.2
 pytest-cov==4.1.0
-pytest-mock==3.12.0
 
-# Development tools
-black==23.11.0
-flake8==6.1.0
-mypy==1.7.1
-
-# System utilities
-psutil==5.9.6
-schedule==1.2.0
-
-# Timezone support
-pytz==2023.3 
+# Optional: For enhanced plotting
+seaborn==0.12.2 
