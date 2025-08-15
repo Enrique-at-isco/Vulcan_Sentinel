@@ -25,6 +25,7 @@ import io
 import hashlib
 import uuid
 import pytz
+import csv
 
 logger = logging.getLogger(__name__)
 
@@ -714,17 +715,78 @@ class ReportGenerator:
     def export_report_csv(self, report_id: str) -> str:
         """Export report data to CSV format"""
         try:
-            # This would extract the raw data from the report and format as CSV
-            # Implementation depends on specific CSV format requirements
+            # Get report metadata to find the original parameters
+            metadata_file = os.path.join(self.reports_dir, "report_metadata.json")
+            
+            if not os.path.exists(metadata_file):
+                raise Exception("Report metadata not found")
+                
+            with open(metadata_file, 'r') as f:
+                metadata_list = json.load(f)
+            
+            # Find the specific report
+            report_metadata = None
+            for metadata in metadata_list:
+                if metadata.get('report_id') == report_id:
+                    report_metadata = metadata
+                    break
+            
+            if not report_metadata:
+                raise Exception(f"Report {report_id} not found in metadata")
+            
+            # Extract the original parameters
+            work_order_number = report_metadata.get('work_order_number', '')
+            start_time_str = report_metadata.get('start_time', '')
+            end_time_str = report_metadata.get('end_time', '')
+            machine_id = report_metadata.get('machine_id', '')
+            
+            # Parse the timestamps
+            start_time = datetime.fromisoformat(start_time_str)
+            end_time = datetime.fromisoformat(end_time_str)
+            
+            # Get the actual data from the database
+            process_data = self._get_process_data(start_time, end_time)
+            
             csv_path = os.path.join(self.reports_dir, f"report_data_{report_id}.csv")
             
-            # Placeholder implementation
-            with open(csv_path, 'w') as f:
-                f.write("timestamp,temperature,stage\n")
-                # Add actual data export logic here
+            with open(csv_path, 'w', newline='') as f:
+                writer = csv.writer(f)
+                writer.writerow(['timestamp', 'temperature', 'stage', 'sensor'])
                 
+                # Write data for each sensor
+                for sensor_name, sensor_data in process_data.get('sensors', {}).items():
+                    readings = sensor_data.get('readings', [])
+                    
+                    for reading in readings:
+                        timestamp = reading.get('timestamp', '')
+                        temperature = reading.get('value', '')
+                        
+                        # Determine stage based on temperature ranges or other logic
+                        stage = self._determine_stage(temperature, sensor_name)
+                        
+                        writer.writerow([timestamp, temperature, stage, sensor_name])
+                
+            logger.info(f"CSV exported to {csv_path}")
             return csv_path
             
         except Exception as e:
             logger.error(f"Failed to export CSV: {e}")
             raise
+    
+    def _determine_stage(self, temperature: float, sensor_name: str) -> str:
+        """Determine the heat stage based on temperature and sensor"""
+        try:
+            temp = float(temperature)
+            
+            # Basic stage determination logic
+            if temp < 100:
+                return "Preheat"
+            elif temp < 200:
+                return "Main Heat"
+            elif temp < 300:
+                return "Rib Heat"
+            else:
+                return "High Temp"
+                
+        except (ValueError, TypeError):
+            return "Unknown"
