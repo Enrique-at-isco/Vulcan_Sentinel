@@ -186,6 +186,7 @@ class VulcanSentinelWebServer:
                 device_name, last_reading = row
                 # Consider device connected if it has a reading in the last 5 minutes
                 last_reading_dt = datetime.fromisoformat(last_reading)
+                last_reading_dt = self.cst_tz.localize(last_reading_dt)
                 connected = (datetime.now(self.cst_tz) - last_reading_dt) < timedelta(minutes=5)
                 
                 devices[device_name] = {
@@ -237,7 +238,9 @@ class VulcanSentinelWebServer:
                 logger.info(f"Raw timestamp for {device_name}: {timestamp} (type: {type(timestamp)})")
                 
                 try:
+                    # Parse the timestamp and make it timezone-aware (assume it's in CST)
                     last_reading_dt = datetime.fromisoformat(timestamp)
+                    last_reading_dt = self.cst_tz.localize(last_reading_dt)
                     time_diff = datetime.now(self.cst_tz) - last_reading_dt
                     connected = time_diff < timedelta(minutes=5)
                     
