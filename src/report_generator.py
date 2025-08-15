@@ -154,9 +154,13 @@ class ReportGenerator:
             # Get data for each sensor
             for device_id, device_config in devices_config['devices'].items():
                 sensor_name = device_config['name']
+                logger.info(f"Fetching data for sensor {sensor_name} from {start_time} to {end_time}")
+                
                 readings = self.db_manager.get_readings_range(
                     sensor_name, start_time, end_time
                 )
+                
+                logger.info(f"Found {len(readings)} readings for {sensor_name}")
                 
                 if readings:
                     process_data['sensors'][sensor_name] = {

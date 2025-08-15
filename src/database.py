@@ -173,6 +173,8 @@ class DatabaseManager:
         try:
             cursor = self.conn.cursor()
             
+            logger.info(f"Querying database for {device_name} from {start_time} to {end_time}")
+            
             cursor.execute("""
                 SELECT * FROM readings
                 WHERE device_name = ? AND timestamp BETWEEN ? AND ?
@@ -182,6 +184,12 @@ class DatabaseManager:
             results = []
             for row in cursor.fetchall():
                 results.append(dict(row))
+            
+            logger.info(f"Database query returned {len(results)} results for {device_name}")
+            
+            # Log a few sample timestamps if we have results
+            if results:
+                logger.info(f"Sample timestamps: {results[0]['timestamp']} to {results[-1]['timestamp']}")
             
             return results
             

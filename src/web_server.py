@@ -522,8 +522,20 @@ class VulcanSentinelWebServer:
                 return {"error": "Start time and end time are required"}
             
             try:
-                start_time = datetime.fromisoformat(start_time_str.replace('Z', '+00:00'))
-                end_time = datetime.fromisoformat(end_time_str.replace('Z', '+00:00'))
+                # Parse the datetime strings from datetime-local input
+                # datetime-local inputs are in the user's local timezone
+                start_time = datetime.fromisoformat(start_time_str)
+                end_time = datetime.fromisoformat(end_time_str)
+                
+                # Convert to CST timezone for consistency with stored data
+                # We need to assume the input times are in CST since that's what we're using throughout
+                import pytz
+                cst_tz = pytz.timezone('America/Chicago')
+                start_time = cst_tz.localize(start_time)
+                end_time = cst_tz.localize(end_time)
+                
+                logger.info(f"Report time range: {start_time} to {end_time}")
+                
             except ValueError as e:
                 return {"error": f"Invalid date format: {e}"}
             
