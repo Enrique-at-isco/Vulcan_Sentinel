@@ -16,6 +16,7 @@ import logging
 import threading
 from datetime import datetime
 from typing import Dict, Any
+import pytz
 
 # Add the src directory to the Python path
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -65,6 +66,9 @@ class VulcanSentinelApp:
         self.report_generator = None
         self.running = False
         self.services = {}
+        
+        # Set timezone to CST to match other components
+        self.cst_tz = pytz.timezone('America/Chicago')
         
         # Load configuration
         self.config = self.config_manager.load_config()
@@ -207,7 +211,7 @@ class VulcanSentinelApp:
         """Get application status"""
         status = {
             'running': self.running,
-            'timestamp': datetime.now().isoformat(),
+            'timestamp': datetime.now(self.cst_tz).isoformat(),
             'version': self.config.get('version', '1.0.0'),
             'services': {}
         }

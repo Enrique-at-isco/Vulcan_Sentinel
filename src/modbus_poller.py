@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Dict, List, Optional
 from dataclasses import dataclass
 import yaml
+import pytz
 
 from pymodbus.client import ModbusTcpClient
 from pymodbus.payload import BinaryPayloadDecoder
@@ -74,6 +75,9 @@ class ModbusPoller:
         self.devices: Dict[str, ModbusDevice] = {}
         self.running = False
         self.threads: List[threading.Thread] = []
+        
+        # Set timezone to CST to match web interface
+        self.cst_tz = pytz.timezone('America/Chicago')
         
         self._load_devices()
         self._setup_database()
@@ -180,7 +184,7 @@ class ModbusPoller:
         
         while self.running:
             try:
-                timestamp = datetime.now()
+                timestamp = datetime.now(self.cst_tz)
                 readings = {}
                 
                 # Read all registers for this device

@@ -24,6 +24,7 @@ from reportlab.lib.enums import TA_CENTER, TA_LEFT, TA_RIGHT
 import io
 import hashlib
 import uuid
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -38,6 +39,9 @@ class ReportGenerator:
         self.reports_dir = "/app/reports"
         self._ensure_reports_directory()
         self.report_counter = self._load_report_counter()
+        
+        # Set timezone to CST to match other components
+        self.cst_tz = pytz.timezone('America/Chicago')
         
     def _ensure_reports_directory(self):
         """Ensure reports directory exists"""
@@ -120,7 +124,7 @@ class ReportGenerator:
                 'machine_id': machine_id,
                 'output_format': output_format,
                 'file_path': output_path,
-                'generated_at': datetime.now().isoformat(),
+                'generated_at': datetime.now(self.cst_tz).isoformat(),
                 'digital_signature': self._generate_digital_signature(report_content)
             }
             
@@ -352,7 +356,7 @@ class ReportGenerator:
             'manual_overrides': process_data.get('manual_overrides', []),
             'footer': {
                 'report_id': report_id,
-                'generated_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                'generated_at': datetime.now(self.cst_tz).strftime('%Y-%m-%d %H:%M:%S')
             }
         }
         

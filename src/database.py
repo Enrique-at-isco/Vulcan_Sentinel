@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import Dict, List, Optional, Any
 import json
 import os
+import pytz
 
 logger = logging.getLogger(__name__)
 
@@ -22,6 +23,9 @@ class DatabaseManager:
         self.db_path = db_path
         self._ensure_data_directory()
         self._init_connection()
+        
+        # Set timezone to CST to match other components
+        self.cst_tz = pytz.timezone('America/Chicago')
     
     def _ensure_data_directory(self):
         """Ensure the data directory exists"""
@@ -189,7 +193,7 @@ class DatabaseManager:
         """Get statistical data for a device over the specified hours"""
         try:
             cursor = self.conn.cursor()
-            end_time = datetime.now()
+            end_time = datetime.now(self.cst_tz)
             start_time = end_time - timedelta(hours=hours)
             
             cursor.execute("""
@@ -271,7 +275,7 @@ class DatabaseManager:
         """Clean up old data to prevent database bloat"""
         try:
             cursor = self.conn.cursor()
-            cutoff_date = datetime.now() - timedelta(days=days)
+            cutoff_date = datetime.now(self.cst_tz) - timedelta(days=days)
             
             # Delete old readings
             cursor.execute("""
@@ -282,7 +286,7 @@ class DatabaseManager:
             readings_deleted = cursor.rowcount
             
             # Delete old events (keep more recent events)
-            event_cutoff = datetime.now() - timedelta(days=7)
+            event_cutoff = datetime.now(self.cst_tz) - timedelta(days=7)
             cursor.execute("""
                 DELETE FROM events
                 WHERE timestamp < ?
