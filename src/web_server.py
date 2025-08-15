@@ -232,8 +232,23 @@ class VulcanSentinelWebServer:
             readings = {}
             for row in cursor.fetchall():
                 device_name, value, timestamp = row
-                last_reading_dt = datetime.fromisoformat(timestamp)
-                connected = (datetime.now(self.cst_tz) - last_reading_dt) < timedelta(minutes=5)
+                
+                # Debug: Log the raw timestamp format
+                logger.info(f"Raw timestamp for {device_name}: {timestamp} (type: {type(timestamp)})")
+                
+                try:
+                    last_reading_dt = datetime.fromisoformat(timestamp)
+                    time_diff = datetime.now(self.cst_tz) - last_reading_dt
+                    connected = time_diff < timedelta(minutes=5)
+                    
+                    # Debug logging
+                    logger.info(f"Device {device_name}: last_reading={last_reading_dt}, now={datetime.now(self.cst_tz)}, diff={time_diff}, connected={connected}")
+                    
+                except ValueError as e:
+                    logger.error(f"Error parsing timestamp for {device_name}: {timestamp}, error: {e}")
+                    # If we can't parse the timestamp, assume disconnected
+                    connected = False
+                    last_reading_dt = None
                 
                 readings[device_name] = {
                     'temperature': value,
