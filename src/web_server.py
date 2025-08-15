@@ -186,7 +186,7 @@ class VulcanSentinelWebServer:
                 device_name, last_reading = row
                 # Consider device connected if it has a reading in the last 5 minutes
                 last_reading_dt = datetime.fromisoformat(last_reading)
-                connected = (datetime.now() - last_reading_dt) < timedelta(minutes=5)
+                connected = (datetime.now(self.cst_tz) - last_reading_dt) < timedelta(minutes=5)
                 
                 devices[device_name] = {
                     'connected': connected,
@@ -197,7 +197,7 @@ class VulcanSentinelWebServer:
             conn.close()
             
             return {
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.now(self.cst_tz).isoformat(),
                 'devices': devices,
                 'system_status': 'running'
             }
@@ -205,7 +205,7 @@ class VulcanSentinelWebServer:
         except Exception as e:
             logger.error(f"Error getting system status: {e}")
             return {
-                'timestamp': datetime.now().isoformat(),
+                'timestamp': datetime.now(self.cst_tz).isoformat(),
                 'devices': {},
                 'system_status': 'error'
             }
@@ -233,7 +233,7 @@ class VulcanSentinelWebServer:
             for row in cursor.fetchall():
                 device_name, value, timestamp = row
                 last_reading_dt = datetime.fromisoformat(timestamp)
-                connected = (datetime.now() - last_reading_dt) < timedelta(minutes=5)
+                connected = (datetime.now(self.cst_tz) - last_reading_dt) < timedelta(minutes=5)
                 
                 readings[device_name] = {
                     'temperature': value,
