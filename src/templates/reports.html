@@ -6,6 +6,32 @@
     <title>Vulcan Sentinel - Report Generation</title>
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
     <style>
+        .clock {
+            position: fixed;
+            top: 20px;
+            left: 20px;
+            background: rgba(0, 0, 0, 0.8);
+            color: #00ff00;
+            padding: 10px 15px;
+            border-radius: 5px;
+            font-family: 'Courier New', monospace;
+            font-size: 18px;
+            font-weight: bold;
+            z-index: 1000;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.3);
+        }
+        
+        .clock .date {
+            font-size: 12px;
+            color: #cccccc;
+            margin-bottom: 2px;
+        }
+        
+        .clock .time {
+            font-size: 20px;
+            color: #00ff00;
+        }
+        
         .report-form {
             background: white;
             padding: 20px;
@@ -109,6 +135,11 @@
     </style>
 </head>
 <body>
+    <div class="clock">
+        <div class="date" id="currentDate"></div>
+        <div class="time" id="currentTime"></div>
+    </div>
+    
     <div class="container">
         <header>
             <h1>Vulcan Sentinel - Report Generation</h1>
@@ -172,6 +203,33 @@
     </div>
 
     <script>
+        // Update clock
+        function updateClock() {
+            const now = new Date();
+            
+            // Update date
+            const dateOptions = { 
+                weekday: 'short', 
+                year: 'numeric', 
+                month: 'short', 
+                day: 'numeric' 
+            };
+            document.getElementById('currentDate').textContent = now.toLocaleDateString('en-US', dateOptions);
+            
+            // Update time
+            const timeOptions = { 
+                hour: '2-digit', 
+                minute: '2-digit', 
+                second: '2-digit',
+                hour12: false 
+            };
+            document.getElementById('currentTime').textContent = now.toLocaleTimeString('en-US', timeOptions);
+        }
+        
+        // Update clock every second
+        setInterval(updateClock, 1000);
+        updateClock(); // Initial call
+        
         // Set default times (last hour)
         function setDefaultTimes() {
             const now = new Date();
