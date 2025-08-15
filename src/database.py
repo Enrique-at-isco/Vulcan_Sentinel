@@ -173,6 +173,13 @@ class DatabaseManager:
         try:
             cursor = self.conn.cursor()
             
+            # Convert timezone-aware datetime objects to naive datetime objects for database comparison
+            # since the database stores naive datetime strings
+            if start_time.tzinfo is not None:
+                start_time = start_time.replace(tzinfo=None)
+            if end_time.tzinfo is not None:
+                end_time = end_time.replace(tzinfo=None)
+            
             logger.info(f"Querying database for {device_name} from {start_time} to {end_time}")
             
             cursor.execute("""
@@ -203,6 +210,12 @@ class DatabaseManager:
             cursor = self.conn.cursor()
             end_time = datetime.now(self.cst_tz)
             start_time = end_time - timedelta(hours=hours)
+            
+            # Convert timezone-aware datetime objects to naive datetime objects for database comparison
+            if start_time.tzinfo is not None:
+                start_time = start_time.replace(tzinfo=None)
+            if end_time.tzinfo is not None:
+                end_time = end_time.replace(tzinfo=None)
             
             cursor.execute("""
                 SELECT 

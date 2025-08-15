@@ -275,13 +275,17 @@ class VulcanSentinelWebServer:
             # Get data from the last N days in CST
             start_date = datetime.now(self.cst_tz) - timedelta(days=days)
             
+            # Convert timezone-aware datetime to naive datetime for database comparison
+            if start_date.tzinfo is not None:
+                start_date = start_date.replace(tzinfo=None)
+            
             cursor.execute("""
                 SELECT device_name, value, timestamp
                 FROM readings
                 WHERE register_name = 'temperature'
                 AND timestamp >= ?
                 ORDER BY timestamp DESC
-            """, (start_date.isoformat(),))
+            """, (start_date,))
             
             data = {}
             for row in cursor.fetchall():
@@ -499,11 +503,15 @@ class VulcanSentinelWebServer:
             # Get data from the last N days
             start_date = datetime.now(self.cst_tz) - timedelta(days=days)
             
+            # Convert timezone-aware datetime to naive datetime for database comparison
+            if start_date.tzinfo is not None:
+                start_date = start_date.replace(tzinfo=None)
+            
             cursor.execute("""
                 SELECT COUNT(*) as record_count
                 FROM readings
                 WHERE timestamp >= ?
-            """, (start_date.isoformat(),))
+            """, (start_date,))
             
             record_count = cursor.fetchone()[0]
             conn.close()
