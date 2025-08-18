@@ -38,8 +38,16 @@ document.addEventListener('DOMContentLoaded', function() {
                 borderWidth: 2,
                 fill: false,
                 tension: 0.1
+            },
+            {
+                label: 'Rib Heat',
+                data: [],
+                borderColor: chartColors.rib_heat,
+                backgroundColor: chartBorderColors.rib_heat,
+                borderWidth: 2,
+                fill: false,
+                tension: 0.1
             }
-            // Rib Heat dataset removed since sensor is disabled
         ]
         },
         options: {
@@ -113,8 +121,8 @@ async function updateChartData() {
         // Process data for each device
         const deviceData = {
             preheat: [],
-            main_heat: []
-            // rib_heat: []  // Disabled since sensor is not connected
+            main_heat: [],
+            rib_heat: []  // Include rib_heat for chart display
         };
         
         // Collect data points
@@ -128,8 +136,9 @@ async function updateChartData() {
                         deviceData.preheat.push({x: timestamp, y: temp});
                     } else if (deviceName === 'main_heat') {
                         deviceData.main_heat.push({x: timestamp, y: temp});
+                    } else if (deviceName === 'rib_heat') {
+                        deviceData.rib_heat.push({x: timestamp, y: temp});
                     }
-                    // Don't process rib_heat data since sensor is disabled
                 });
             }
         });
@@ -142,7 +151,7 @@ async function updateChartData() {
         // Update chart datasets
         temperatureChart.data.datasets[0].data = deviceData.preheat;
         temperatureChart.data.datasets[1].data = deviceData.main_heat;
-        // temperatureChart.data.datasets[2].data = deviceData.rib_heat;  // Disabled
+        temperatureChart.data.datasets[2].data = deviceData.rib_heat;
         
         temperatureChart.update();
         

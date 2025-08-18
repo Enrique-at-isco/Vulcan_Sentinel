@@ -17,20 +17,25 @@
     <div class="status-grid">
         <div class="status-card">
             <h3>🌡️ Current Temperatures</h3>
-            {% for device_name, data in readings.items() %}
-                {% if data.connected %}
-                    <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                        <div style="font-weight: bold; color: #333;">{{ device_name.replace('_', ' ').title() }}</div>
-                        <div class="temperature">{{ data.temperature }}°F</div>
-                        <div style="text-align: center; color: #666; font-size: 0.9em;">Last updated: {{ format_timestamp_cst(data.timestamp) }}</div>
-                    </div>
-                {% else %}
-                    <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
-                        <div style="font-weight: bold; color: #333;">{{ device_name.replace('_', ' ').title() }}</div>
-                        <div style="text-align: center; color: #dc3545; font-size: 1.2em;">⚠️ Disconnected</div>
-                    </div>
-                {% endif %}
-            {% endfor %}
+                         {% for device_name, data in readings.items() %}
+                 {% if data.connected %}
+                     <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                         <div style="font-weight: bold; color: #333;">{{ device_name.replace('_', ' ').title() }}</div>
+                         <div class="temperature">{{ data.temperature }}°F</div>
+                         <div style="text-align: center; color: #666; font-size: 0.9em;">Last updated: {{ format_timestamp_cst(data.timestamp) }}</div>
+                     </div>
+                 {% else %}
+                     <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
+                         <div style="font-weight: bold; color: #333;">{{ device_name.replace('_', ' ').title() }}</div>
+                         {% if data.temperature == 'N/A' %}
+                             <div style="text-align: center; color: #dc3545; font-size: 1.2em;">N/A</div>
+                         {% else %}
+                             <div class="temperature">{{ data.temperature }}°F</div>
+                         {% endif %}
+                         <div style="text-align: center; color: #666; font-size: 0.9em;">⚠️ Disconnected</div>
+                     </div>
+                 {% endif %}
+             {% endfor %}
         </div>
         
         <div class="status-card">
@@ -68,7 +73,7 @@
         <h3>📥 Data Export</h3>
         <a href="/api/csv/preheat" class="btn">📄 Preheat CSV</a>
         <a href="/api/csv/main_heat" class="btn">📄 Main Heat CSV</a>
-        <!-- <a href="/api/csv/rib_heat" class="btn">📄 Rib Heat CSV</a> -->
+        <a href="/api/csv/rib_heat" class="btn">📄 Rib Heat CSV</a>
         <a href="/api/readings/history?days=7" class="btn">📊 7-Day History</a>
         <a href="/api/readings/history?days=30" class="btn">📊 30-Day History</a>
     </div>

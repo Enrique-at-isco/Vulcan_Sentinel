@@ -258,13 +258,20 @@ class VulcanSentinelWebServer:
                     'timestamp': f"{date_str} {time_str}",
                     'connected': connected
                 }
-            # Don't include rib_heat since sensor is disabled
-            # if rib_heat is not None:
-            #     readings['rib_heat'] = {
-            #         'temperature': rib_heat,
-            #         'timestamp': f"{date_str} {time_str}",
-            #         'connected': connected
-            #     }
+            # Include rib_heat but mark as disconnected if no data
+            if rib_heat is not None:
+                readings['rib_heat'] = {
+                    'temperature': rib_heat,
+                    'timestamp': f"{date_str} {time_str}",
+                    'connected': connected
+                }
+            else:
+                # Show rib_heat as disconnected with N/A values
+                readings['rib_heat'] = {
+                    'temperature': 'N/A',
+                    'timestamp': 'N/A',
+                    'connected': False
+                }
             
             conn.close()
             return readings
@@ -327,13 +334,20 @@ class VulcanSentinelWebServer:
                             'last_reading_dt': reading_time.isoformat()
                         }
                     
-                    # Don't show rib_heat since it's disabled
-                    # if rib_heat_val is not None:
-                    #     devices['rib_heat'] = {
-                    #         'connected': connected,
-                    #         'last_reading': f"{date_str} {time_str}",
-                    #         'last_reading_dt': reading_time.isoformat()
-                    #     }
+                    # Show rib_heat status based on data availability
+                    if rib_heat_val is not None:
+                        devices['rib_heat'] = {
+                            'connected': connected,
+                            'last_reading': f"{date_str} {time_str}",
+                            'last_reading_dt': reading_time.isoformat()
+                        }
+                    else:
+                        # Show rib_heat as disconnected
+                        devices['rib_heat'] = {
+                            'connected': False,
+                            'last_reading': 'N/A',
+                            'last_reading_dt': None
+                        }
             
             conn.close()
             
@@ -369,8 +383,8 @@ class VulcanSentinelWebServer:
             
             data = {
                 'preheat': [],
-                'main_heat': []
-                # 'rib_heat': []  # Disabled since sensor is not connected
+                'main_heat': [],
+                'rib_heat': []  # Include rib_heat for chart display
             }
             
             for row in cursor.fetchall():
@@ -389,12 +403,12 @@ class VulcanSentinelWebServer:
                         'timestamp': timestamp_str
                     })
                 
-                # Don't include rib_heat data since sensor is disabled
-                # if rib_heat is not None:
-                #     data['rib_heat'].append({
-                #         'temperature': rib_heat,
-                #         'timestamp': timestamp_str
-                #     })
+                # Include rib_heat data if available
+                if rib_heat is not None:
+                    data['rib_heat'].append({
+                        'temperature': rib_heat,
+                        'timestamp': timestamp_str
+                    })
             
             conn.close()
             return data
