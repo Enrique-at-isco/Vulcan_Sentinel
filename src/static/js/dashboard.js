@@ -20,35 +20,27 @@ document.addEventListener('DOMContentLoaded', function() {
         type: 'line',
         data: {
             labels: [],
-            datasets: [
-                {
-                    label: 'Preheat',
-                    data: [],
-                    borderColor: chartColors.preheat,
-                    backgroundColor: chartBorderColors.preheat,
-                    borderWidth: 2,
-                    fill: false,
-                    tension: 0.1
-                },
-                {
-                    label: 'Main Heat',
-                    data: [],
-                    borderColor: chartColors.main_heat,
-                    backgroundColor: chartBorderColors.main_heat,
-                    borderWidth: 2,
-                    fill: false,
-                    tension: 0.1
-                },
-                {
-                    label: 'Rib Heat',
-                    data: [],
-                    borderColor: chartColors.rib_heat,
-                    backgroundColor: chartBorderColors.rib_heat,
-                    borderWidth: 2,
-                    fill: false,
-                    tension: 0.1
-                }
-            ]
+                    datasets: [
+            {
+                label: 'Preheat',
+                data: [],
+                borderColor: chartColors.preheat,
+                backgroundColor: chartBorderColors.preheat,
+                borderWidth: 2,
+                fill: false,
+                tension: 0.1
+            },
+            {
+                label: 'Main Heat',
+                data: [],
+                borderColor: chartColors.main_heat,
+                backgroundColor: chartBorderColors.main_heat,
+                borderWidth: 2,
+                fill: false,
+                tension: 0.1
+            }
+            // Rib Heat dataset removed since sensor is disabled
+        ]
         },
         options: {
             responsive: true,
@@ -121,8 +113,8 @@ async function updateChartData() {
         // Process data for each device
         const deviceData = {
             preheat: [],
-            main_heat: [],
-            rib_heat: []
+            main_heat: []
+            // rib_heat: []  // Disabled since sensor is not connected
         };
         
         // Collect data points
@@ -136,9 +128,8 @@ async function updateChartData() {
                         deviceData.preheat.push({x: timestamp, y: temp});
                     } else if (deviceName === 'main_heat') {
                         deviceData.main_heat.push({x: timestamp, y: temp});
-                    } else if (deviceName === 'rib_heat') {
-                        deviceData.rib_heat.push({x: timestamp, y: temp});
                     }
+                    // Don't process rib_heat data since sensor is disabled
                 });
             }
         });
@@ -151,7 +142,7 @@ async function updateChartData() {
         // Update chart datasets
         temperatureChart.data.datasets[0].data = deviceData.preheat;
         temperatureChart.data.datasets[1].data = deviceData.main_heat;
-        temperatureChart.data.datasets[2].data = deviceData.rib_heat;
+        // temperatureChart.data.datasets[2].data = deviceData.rib_heat;  // Disabled
         
         temperatureChart.update();
         
@@ -178,40 +169,48 @@ async function updateStorageInfo() {
         
         // Update system storage
         const systemStorage = document.getElementById('system-storage');
-        const systemUsagePercent = (data.system_storage.used / data.system_storage.total) * 100;
-        const systemBarClass = systemUsagePercent > 80 ? 'danger' : systemUsagePercent > 60 ? 'warning' : '';
-        
-        systemStorage.innerHTML = `
-            <div class="storage-info">
-                <div>Total: ${formatBytes(data.system_storage.total)}</div>
-                <div>Used: ${formatBytes(data.system_storage.used)}</div>
-                <div>Available: ${formatBytes(data.system_storage.available)}</div>
-                <div class="storage-bar">
-                    <div class="storage-bar-fill ${systemBarClass}" style="width: ${systemUsagePercent}%"></div>
+        if (data.system_storage && data.system_storage.total_gb > 0) {
+            const systemUsagePercent = data.system_storage.used_percentage;
+            const systemBarClass = systemUsagePercent > 80 ? 'danger' : systemUsagePercent > 60 ? 'warning' : '';
+            
+            systemStorage.innerHTML = `
+                <div class="storage-info">
+                    <div>Total: ${data.system_storage.total_gb} GB</div>
+                    <div>Used: ${data.system_storage.used_gb} GB</div>
+                    <div>Available: ${data.system_storage.free_gb} GB</div>
+                    <div class="storage-bar">
+                        <div class="storage-bar-fill ${systemBarClass}" style="width: ${systemUsagePercent}%"></div>
+                    </div>
+                    <div>${systemUsagePercent.toFixed(1)}% used</div>
                 </div>
-                <div>${systemUsagePercent.toFixed(1)}% used</div>
-            </div>
-        `;
+            `;
+        } else {
+            systemStorage.innerHTML = '<div class="storage-info">Storage information unavailable</div>';
+        }
         
         // Update database size
         const databaseSize = document.getElementById('database-size');
-        databaseSize.innerHTML = `
-            <div class="storage-info">
-                <div>Database: ${formatBytes(data.database_size)}</div>
-                <div>Records: ${data.record_count.toLocaleString()}</div>
-                <div>Oldest: ${data.oldest_record}</div>
-                <div>Newest: ${data.newest_record}</div>
-            </div>
-        `;
+        if (data.database) {
+            databaseSize.innerHTML = `
+                <div class="storage-info">
+                    <div>Database: ${data.database.size_mb} MB</div>
+                    <div>Records: ${data.database.record_count.toLocaleString()}</div>
+                    <div>Oldest: ${data.database.oldest_record || 'N/A'}</div>
+                    <div>Newest: ${data.database.newest_record || 'N/A'}</div>
+                </div>
+            `;
+        } else {
+            databaseSize.innerHTML = '<div class="storage-info">Database information unavailable</div>';
+        }
         
-        // Update data consumption
+        // Update data consumption (simplified since we don't have consumption data)
         const dataConsumption = document.getElementById('data-consumption');
         dataConsumption.innerHTML = `
             <div class="storage-info">
-                <div>Today: ${formatBytes(data.daily_consumption)}</div>
-                <div>This Week: ${formatBytes(data.weekly_consumption)}</div>
-                <div>This Month: ${formatBytes(data.monthly_consumption)}</div>
-                <div>Avg/Day: ${formatBytes(data.avg_daily_consumption)}</div>
+                <div>Data collection active</div>
+                <div>Real-time monitoring</div>
+                <div>Temperature readings</div>
+                <div>Historical data available</div>
             </div>
         `;
         

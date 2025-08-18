@@ -258,12 +258,13 @@ class VulcanSentinelWebServer:
                     'timestamp': f"{date_str} {time_str}",
                     'connected': connected
                 }
-            if rib_heat is not None:
-                readings['rib_heat'] = {
-                    'temperature': rib_heat,
-                    'timestamp': f"{date_str} {time_str}",
-                    'connected': connected
-                }
+            # Don't include rib_heat since sensor is disabled
+            # if rib_heat is not None:
+            #     readings['rib_heat'] = {
+            #         'temperature': rib_heat,
+            #         'timestamp': f"{date_str} {time_str}",
+            #         'connected': connected
+            #     }
             
             conn.close()
             return readings
@@ -296,24 +297,43 @@ class VulcanSentinelWebServer:
                 current_time = datetime.now(self.cst_tz)
                 connected = (current_time - reading_time) < timedelta(minutes=5)
                 
-                # All devices share the same connection status based on latest reading
-                devices = {
-                    'preheat': {
-                        'connected': connected,
-                        'last_reading': f"{date_str} {time_str}",
-                        'last_reading_dt': reading_time.isoformat()
-                    },
-                    'main_heat': {
-                        'connected': connected,
-                        'last_reading': f"{date_str} {time_str}",
-                        'last_reading_dt': reading_time.isoformat()
-                    },
-                    'rib_heat': {
-                        'connected': connected,
-                        'last_reading': f"{date_str} {time_str}",
-                        'last_reading_dt': reading_time.isoformat()
-                    }
-                }
+                # Check individual device status based on actual data
+                devices = {}
+                
+                # Check if we have recent data for each device
+                cursor.execute("""
+                    SELECT preheat, main_heat, rib_heat
+                    FROM readings 
+                    ORDER BY date DESC, timestamp DESC 
+                    LIMIT 1
+                """)
+                
+                data_row = cursor.fetchone()
+                if data_row:
+                    preheat_val, main_heat_val, rib_heat_val = data_row
+                    
+                    # Only show devices that have actual data
+                    if preheat_val is not None:
+                        devices['preheat'] = {
+                            'connected': connected,
+                            'last_reading': f"{date_str} {time_str}",
+                            'last_reading_dt': reading_time.isoformat()
+                        }
+                    
+                    if main_heat_val is not None:
+                        devices['main_heat'] = {
+                            'connected': connected,
+                            'last_reading': f"{date_str} {time_str}",
+                            'last_reading_dt': reading_time.isoformat()
+                        }
+                    
+                    # Don't show rib_heat since it's disabled
+                    # if rib_heat_val is not None:
+                    #     devices['rib_heat'] = {
+                    #         'connected': connected,
+                    #         'last_reading': f"{date_str} {time_str}",
+                    #         'last_reading_dt': reading_time.isoformat()
+                    #     }
             
             conn.close()
             
@@ -349,8 +369,8 @@ class VulcanSentinelWebServer:
             
             data = {
                 'preheat': [],
-                'main_heat': [],
-                'rib_heat': []
+                'main_heat': []
+                # 'rib_heat': []  # Disabled since sensor is not connected
             }
             
             for row in cursor.fetchall():
@@ -369,11 +389,12 @@ class VulcanSentinelWebServer:
                         'timestamp': timestamp_str
                     })
                 
-                if rib_heat is not None:
-                    data['rib_heat'].append({
-                        'temperature': rib_heat,
-                        'timestamp': timestamp_str
-                    })
+                # Don't include rib_heat data since sensor is disabled
+                # if rib_heat is not None:
+                #     data['rib_heat'].append({
+                #         'temperature': rib_heat,
+                #         'timestamp': timestamp_str
+                #     })
             
             conn.close()
             return data
@@ -505,7 +526,27 @@ class VulcanSentinelWebServer:
         """Get comprehensive storage usage information for new schema"""
         try:
             # Get system storage information
-            disk_usage = shutil.disk_usage(os.path.dirname(self.db_path))
+            try:
+                disk_usage = shutil.disk_usage(os.path.dirname(self.db_path))
+                total_space = disk_usage.total
+                used_space = disk_usage.used
+                free_space = disk_usage.free
+                used_percentage = (used_space / total_space) * 100 if total_space > 0 else 0
+                
+                system_storage = {
+                    'total_gb': round(total_space / (1024**3), 2),
+                    'used_gb': round(used_space / (1024**3), 2),
+                    'free_gb': round(free_space / (1024**3), 2),
+                    'used_percentage': round(used_percentage, 1)
+                }
+            except Exception as e:
+                logger.error(f"Error getting disk usage: {e}")
+                system_storage = {
+                    'total_gb': 0,
+                    'used_gb': 0,
+                    'free_gb': 0,
+                    'used_percentage': 0
+                }
             
             # Get database size and statistics
             db_size = 0
@@ -514,39 +555,33 @@ class VulcanSentinelWebServer:
             newest_record = None
             
             if os.path.exists(self.db_path):
-                db_size = os.path.getsize(self.db_path)
-                
-                conn = sqlite3.connect(self.db_path)
-                cursor = conn.cursor()
-                
-                # Get record count
-                cursor.execute("SELECT COUNT(*) FROM readings")
-                record_count = cursor.fetchone()[0]
-                
-                # Get oldest and newest records
-                if record_count > 0:
-                    cursor.execute("SELECT MIN(date || ' ' || timestamp), MAX(date || ' ' || timestamp) FROM readings")
-                    oldest, newest = cursor.fetchone()
-                    if oldest:
-                        oldest_record = oldest
-                    if newest:
-                        newest_record = newest
-                
-                conn.close()
-            
-            # Calculate storage percentages
-            total_space = disk_usage.total
-            used_space = disk_usage.used
-            free_space = disk_usage.free
-            used_percentage = (used_space / total_space) * 100 if total_space > 0 else 0
+                try:
+                    db_size = os.path.getsize(self.db_path)
+                    
+                    conn = sqlite3.connect(self.db_path)
+                    cursor = conn.cursor()
+                    
+                    # Get record count
+                    cursor.execute("SELECT COUNT(*) FROM readings")
+                    record_count = cursor.fetchone()[0]
+                    
+                    # Get oldest and newest records
+                    if record_count > 0:
+                        cursor.execute("SELECT MIN(date || ' ' || timestamp), MAX(date || ' ' || timestamp) FROM readings")
+                        oldest, newest = cursor.fetchone()
+                        if oldest:
+                            oldest_record = oldest
+                        if newest:
+                            newest_record = newest
+                    
+                    conn.close()
+                except Exception as e:
+                    logger.error(f"Error getting database info: {e}")
+                    db_size = 0
+                    record_count = 0
             
             return {
-                'system_storage': {
-                    'total_gb': round(total_space / (1024**3), 2),
-                    'used_gb': round(used_space / (1024**3), 2),
-                    'free_gb': round(free_space / (1024**3), 2),
-                    'used_percentage': round(used_percentage, 1)
-                },
+                'system_storage': system_storage,
                 'database': {
                     'size_mb': round(db_size / (1024**2), 2),
                     'record_count': record_count,
