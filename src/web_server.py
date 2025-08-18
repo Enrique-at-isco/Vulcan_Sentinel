@@ -90,7 +90,38 @@ class VulcanSentinelWebServer:
         @self.app.route('/health')
         def health():
             """Health check endpoint"""
-            return jsonify({"status": "healthy", "timestamp": datetime.now(self.cst_tz).isoformat()})
+            try:
+                # Check if we can access the database
+                db_status = "healthy"
+                try:
+                    # Simple database connectivity check
+                    self.db_manager.get_latest_readings()
+                except Exception as e:
+                    db_status = f"database_error: {str(e)}"
+                
+                # Check if we have any recent data (within last 5 minutes)
+                data_status = "healthy"
+                try:
+                    latest = self.db_manager.get_latest_readings()
+                    if not latest:
+                        data_status = "no_recent_data"
+                except Exception as e:
+                    data_status = f"data_error: {str(e)}"
+                
+                overall_status = "healthy" if db_status == "healthy" and data_status == "healthy" else "degraded"
+                
+                return jsonify({
+                    "status": overall_status,
+                    "database": db_status,
+                    "data": data_status,
+                    "timestamp": datetime.now(self.cst_tz).isoformat()
+                })
+            except Exception as e:
+                return jsonify({
+                    "status": "unhealthy",
+                    "error": str(e),
+                    "timestamp": datetime.now(self.cst_tz).isoformat()
+                }), 500
         
         @self.app.route('/api/cleanup-duplicates')
         def api_cleanup_duplicates():

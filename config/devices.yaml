@@ -19,12 +19,12 @@ devices:
     polling_interval: 20
     description: "Main heat temperature sensor for primary monitoring (Fahrenheit)"
     
-  sensor_3:
-    name: "rib_heat"
-    ip: "169.254.1.3"
-    port: 502
-    slave_id: 1
-    registers:
-      temperature: 402
-    polling_interval: 20
-    description: "Rib heat temperature sensor for secondary monitoring (Fahrenheit)" 
+  # sensor_3:
+  #   name: "rib_heat"
+  #   ip: "169.254.1.3"
+  #   port: 502
+  #   slave_id: 1
+  #   registers:
+  #     temperature: 402
+  #   polling_interval: 20
+  #   description: "Rib heat temperature sensor for secondary monitoring (Fahrenheit) - DISABLED" 
