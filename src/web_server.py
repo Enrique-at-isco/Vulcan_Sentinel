@@ -222,7 +222,7 @@ class VulcanSentinelWebServer:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Get the most recent reading
+            # Get the most recent reading for each sensor type
             cursor.execute("""
                 SELECT date, timestamp, preheat, main_heat, rib_heat
                 FROM readings 
@@ -246,19 +246,75 @@ class VulcanSentinelWebServer:
             connected = time_diff < timedelta(minutes=5)
             
             readings = {}
+            
+            # Always include all three sensors
+            # Preheat
             if preheat is not None:
                 readings['preheat'] = {
                     'temperature': preheat,
                     'timestamp': f"{date_str} {time_str}",
                     'connected': connected
                 }
+            else:
+                # Check if we have any recent preheat data
+                cursor.execute("""
+                    SELECT date, timestamp, preheat FROM readings 
+                    WHERE preheat IS NOT NULL 
+                    ORDER BY date DESC, timestamp DESC 
+                    LIMIT 1
+                """)
+                preheat_row = cursor.fetchone()
+                if preheat_row:
+                    p_date, p_time, p_temp = preheat_row
+                    p_reading_time = datetime.strptime(f"{p_date} {p_time}", '%Y-%m-%d %H:%M:%S')
+                    p_reading_time = self.cst_tz.localize(p_reading_time)
+                    p_connected = (current_time - p_reading_time) < timedelta(minutes=5)
+                    readings['preheat'] = {
+                        'temperature': p_temp,
+                        'timestamp': f"{p_date} {p_time}",
+                        'connected': p_connected
+                    }
+                else:
+                    readings['preheat'] = {
+                        'temperature': 'N/A',
+                        'timestamp': 'N/A',
+                        'connected': False
+                    }
+            
+            # Main Heat
             if main_heat is not None:
                 readings['main_heat'] = {
                     'temperature': main_heat,
                     'timestamp': f"{date_str} {time_str}",
                     'connected': connected
                 }
-            # Include rib_heat but mark as disconnected if no data
+            else:
+                # Check if we have any recent main_heat data
+                cursor.execute("""
+                    SELECT date, timestamp, main_heat FROM readings 
+                    WHERE main_heat IS NOT NULL 
+                    ORDER BY date DESC, timestamp DESC 
+                    LIMIT 1
+                """)
+                main_heat_row = cursor.fetchone()
+                if main_heat_row:
+                    m_date, m_time, m_temp = main_heat_row
+                    m_reading_time = datetime.strptime(f"{m_date} {m_time}", '%Y-%m-%d %H:%M:%S')
+                    m_reading_time = self.cst_tz.localize(m_reading_time)
+                    m_connected = (current_time - m_reading_time) < timedelta(minutes=5)
+                    readings['main_heat'] = {
+                        'temperature': m_temp,
+                        'timestamp': f"{m_date} {m_time}",
+                        'connected': m_connected
+                    }
+                else:
+                    readings['main_heat'] = {
+                        'temperature': 'N/A',
+                        'timestamp': 'N/A',
+                        'connected': False
+                    }
+            
+            # Rib Heat
             if rib_heat is not None:
                 readings['rib_heat'] = {
                     'temperature': rib_heat,
@@ -319,22 +375,74 @@ class VulcanSentinelWebServer:
                 if data_row:
                     preheat_val, main_heat_val, rib_heat_val = data_row
                     
-                    # Only show devices that have actual data
+                    # Always show all three devices
+                    # Preheat
                     if preheat_val is not None:
                         devices['preheat'] = {
                             'connected': connected,
                             'last_reading': f"{date_str} {time_str}",
                             'last_reading_dt': reading_time.isoformat()
                         }
+                    else:
+                        # Check if we have any recent preheat data
+                        cursor.execute("""
+                            SELECT date, timestamp FROM readings 
+                            WHERE preheat IS NOT NULL 
+                            ORDER BY date DESC, timestamp DESC 
+                            LIMIT 1
+                        """)
+                        preheat_row = cursor.fetchone()
+                        if preheat_row:
+                            p_date, p_time = preheat_row
+                            p_reading_time = datetime.strptime(f"{p_date} {p_time}", '%Y-%m-%d %H:%M:%S')
+                            p_reading_time = self.cst_tz.localize(p_reading_time)
+                            p_connected = (current_time - p_reading_time) < timedelta(minutes=5)
+                            devices['preheat'] = {
+                                'connected': p_connected,
+                                'last_reading': f"{p_date} {p_time}",
+                                'last_reading_dt': p_reading_time.isoformat()
+                            }
+                        else:
+                            devices['preheat'] = {
+                                'connected': False,
+                                'last_reading': 'N/A',
+                                'last_reading_dt': None
+                            }
                     
+                    # Main Heat
                     if main_heat_val is not None:
                         devices['main_heat'] = {
                             'connected': connected,
                             'last_reading': f"{date_str} {time_str}",
                             'last_reading_dt': reading_time.isoformat()
                         }
+                    else:
+                        # Check if we have any recent main_heat data
+                        cursor.execute("""
+                            SELECT date, timestamp FROM readings 
+                            WHERE main_heat IS NOT NULL 
+                            ORDER BY date DESC, timestamp DESC 
+                            LIMIT 1
+                        """)
+                        main_heat_row = cursor.fetchone()
+                        if main_heat_row:
+                            m_date, m_time = main_heat_row
+                            m_reading_time = datetime.strptime(f"{m_date} {m_time}", '%Y-%m-%d %H:%M:%S')
+                            m_reading_time = self.cst_tz.localize(m_reading_time)
+                            m_connected = (current_time - m_reading_time) < timedelta(minutes=5)
+                            devices['main_heat'] = {
+                                'connected': m_connected,
+                                'last_reading': f"{m_date} {m_time}",
+                                'last_reading_dt': m_reading_time.isoformat()
+                            }
+                        else:
+                            devices['main_heat'] = {
+                                'connected': False,
+                                'last_reading': 'N/A',
+                                'last_reading_dt': None
+                            }
                     
-                    # Show rib_heat status based on data availability
+                    # Rib Heat
                     if rib_heat_val is not None:
                         devices['rib_heat'] = {
                             'connected': connected,
