@@ -52,23 +52,23 @@ class DatabaseManager:
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
                     name TEXT NOT NULL UNIQUE,
                     ip_address TEXT NOT NULL,
-                    port INTEGER NOT NULL,
-                    slave_id INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    port INTEGER NOT NULL DEFAULT 502,
+                    slave_id INTEGER NOT NULL DEFAULT 1,
+                    register_address INTEGER NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             
-            # Create readings table
+            # Create new simplified readings table
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS readings (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    device_name TEXT NOT NULL,
-                    timestamp TIMESTAMP NOT NULL,
-                    register_name TEXT NOT NULL,
-                    value REAL NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    FOREIGN KEY (device_name) REFERENCES devices (name)
+                    date DATE NOT NULL,
+                    timestamp TIME NOT NULL,
+                    preheat REAL,
+                    main_heat REAL,
+                    rib_heat REAL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
                 )
             """)
             
@@ -86,13 +86,13 @@ class DatabaseManager:
             
             # Create indexes for better performance
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_readings_device_timestamp 
-                ON readings (device_name, timestamp)
+                CREATE INDEX IF NOT EXISTS idx_readings_date_timestamp 
+                ON readings (date, timestamp)
             """)
             
             cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_readings_timestamp 
-                ON readings (timestamp)
+                CREATE INDEX IF NOT EXISTS idx_readings_date 
+                ON readings (date)
             """)
             
             cursor.execute("""
@@ -108,19 +108,49 @@ class DatabaseManager:
             raise
     
     def store_readings(self, device_name: str, timestamp: datetime, readings: Dict[str, float]):
-        """Store readings for a device"""
+        """Store readings for a device in the new format"""
         try:
             cursor = self.conn.cursor()
             
-            # Store each reading
-            for register_name, value in readings.items():
+            # Convert timestamp to CST and extract date and time
+            cst_timestamp = timestamp.astimezone(self.cst_tz)
+            date_str = cst_timestamp.strftime('%Y-%m-%d')
+            time_str = cst_timestamp.strftime('%H:%M:%S')
+            
+            # Check if we already have a reading for this exact timestamp
+            cursor.execute("""
+                SELECT id FROM readings 
+                WHERE date = ? AND timestamp = ?
+            """, (date_str, time_str))
+            
+            existing = cursor.fetchone()
+            
+            if existing:
+                # Update existing record
                 cursor.execute("""
-                    INSERT INTO readings (device_name, timestamp, register_name, value)
-                    VALUES (?, ?, ?, ?)
-                """, (device_name, timestamp, register_name, value))
+                    UPDATE readings 
+                    SET preheat = ?, main_heat = ?, rib_heat = ?
+                    WHERE date = ? AND timestamp = ?
+                """, (
+                    readings.get('preheat'),
+                    readings.get('main_heat'), 
+                    readings.get('rib_heat'),
+                    date_str, time_str
+                ))
+            else:
+                # Insert new record
+                cursor.execute("""
+                    INSERT INTO readings (date, timestamp, preheat, main_heat, rib_heat)
+                    VALUES (?, ?, ?, ?, ?)
+                """, (
+                    date_str, time_str,
+                    readings.get('preheat'),
+                    readings.get('main_heat'),
+                    readings.get('rib_heat')
+                ))
             
             self.conn.commit()
-            logger.debug(f"Stored {len(readings)} readings for {device_name}")
+            logger.debug(f"Stored readings for {device_name} at {date_str} {time_str}")
             
         except Exception as e:
             logger.error(f"Failed to store readings for {device_name}: {e}")

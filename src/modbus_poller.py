@@ -197,7 +197,7 @@ class ModbusPoller:
                 if readings:
                     device.last_reading = timestamp
                     
-                    # Store in database
+                    # Store in database (device_name is used to identify which column to update)
                     self.db_manager.store_readings(device.name, timestamp, readings)
                     
                     # Log to CSV

@@ -185,52 +185,103 @@ class VulcanSentinelWebServer:
             logger.error(f"Error formatting timestamp {timestamp_str}: {e}")
             return str(timestamp_str) if timestamp_str else 'N/A'
     
-    def _get_system_status(self):
-        """Get system status from database"""
+    def _get_latest_readings(self):
+        """Get latest temperature readings from new schema"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Get latest readings for each device
+            # Get the most recent reading
             cursor.execute("""
-                SELECT device_name, MAX(timestamp) as last_reading
+                SELECT date, timestamp, preheat, main_heat, rib_heat
                 FROM readings 
-                GROUP BY device_name
+                ORDER BY date DESC, timestamp DESC 
+                LIMIT 1
             """)
             
+            row = cursor.fetchone()
+            if not row:
+                conn.close()
+                return {}
+            
+            date_str, time_str, preheat, main_heat, rib_heat = row
+            
+            # Check if reading is recent (within last 5 minutes)
+            current_time = datetime.now(self.cst_tz)
+            reading_time = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M:%S')
+            reading_time = self.cst_tz.localize(reading_time)
+            
+            time_diff = current_time - reading_time
+            connected = time_diff < timedelta(minutes=5)
+            
+            readings = {}
+            if preheat is not None:
+                readings['preheat'] = {
+                    'temperature': preheat,
+                    'timestamp': f"{date_str} {time_str}",
+                    'connected': connected
+                }
+            if main_heat is not None:
+                readings['main_heat'] = {
+                    'temperature': main_heat,
+                    'timestamp': f"{date_str} {time_str}",
+                    'connected': connected
+                }
+            if rib_heat is not None:
+                readings['rib_heat'] = {
+                    'temperature': rib_heat,
+                    'timestamp': f"{date_str} {time_str}",
+                    'connected': connected
+                }
+            
+            conn.close()
+            return readings
+            
+        except Exception as e:
+            logger.error(f"Error getting latest readings: {e}")
+            return {}
+    
+    def _get_system_status(self):
+        """Get system status from new database schema"""
+        try:
+            conn = sqlite3.connect(self.db_path)
+            cursor = conn.cursor()
+            
+            # Get the most recent reading time
+            cursor.execute("""
+                SELECT date, timestamp FROM readings 
+                ORDER BY date DESC, timestamp DESC 
+                LIMIT 1
+            """)
+            
+            row = cursor.fetchone()
             devices = {}
-            for row in cursor.fetchall():
-                device_name, last_reading = row
+            
+            if row:
+                date_str, time_str = row
+                reading_time = datetime.strptime(f"{date_str} {time_str}", '%Y-%m-%d %H:%M:%S')
+                reading_time = self.cst_tz.localize(reading_time)
                 
-                try:
-                    # Handle different timestamp formats
-                    if isinstance(last_reading, str):
-                        # Try to parse as ISO format first
-                        try:
-                            last_reading_dt = datetime.fromisoformat(last_reading)
-                        except ValueError:
-                            # If that fails, try parsing as naive datetime and localize
-                            last_reading_dt = datetime.strptime(last_reading, '%Y-%m-%d %H:%M:%S')
-                            last_reading_dt = self.cst_tz.localize(last_reading_dt)
-                    else:
-                        # If it's already a datetime object, use it directly
-                        last_reading_dt = last_reading
-                    
-                    # Ensure it's timezone-aware
-                    if last_reading_dt.tzinfo is None:
-                        last_reading_dt = self.cst_tz.localize(last_reading_dt)
-                    
-                    connected = (datetime.now(self.cst_tz) - last_reading_dt) < timedelta(minutes=5)
-                    
-                except (ValueError, TypeError) as e:
-                    logger.error(f"Error parsing timestamp for {device_name}: {last_reading}, error: {e}")
-                    connected = False
-                    last_reading_dt = None
+                current_time = datetime.now(self.cst_tz)
+                connected = (current_time - reading_time) < timedelta(minutes=5)
                 
-                devices[device_name] = {
-                    'connected': connected,
-                    'last_reading': last_reading,
-                    'last_reading_dt': last_reading_dt.isoformat() if last_reading_dt else None
+                # All devices share the same connection status based on latest reading
+                devices = {
+                    'preheat': {
+                        'connected': connected,
+                        'last_reading': f"{date_str} {time_str}",
+                        'last_reading_dt': reading_time.isoformat()
+                    },
+                    'main_heat': {
+                        'connected': connected,
+                        'last_reading': f"{date_str} {time_str}",
+                        'last_reading_dt': reading_time.isoformat()
+                    },
+                    'rib_heat': {
+                        'connected': connected,
+                        'last_reading': f"{date_str} {time_str}",
+                        'last_reading_dt': reading_time.isoformat()
+                    }
                 }
             
             conn.close()
@@ -249,109 +300,49 @@ class VulcanSentinelWebServer:
                 'system_status': 'error'
             }
     
-    def _get_latest_readings(self):
-        """Get latest temperature readings"""
-        try:
-            conn = sqlite3.connect(self.db_path)
-            cursor = conn.cursor()
-            
-            # Get latest temperature reading for each device
-            cursor.execute("""
-                SELECT device_name, value, timestamp
-                FROM readings r1
-                WHERE register_name = 'temperature'
-                AND timestamp = (
-                    SELECT MAX(timestamp) 
-                    FROM readings r2 
-                    WHERE r2.device_name = r1.device_name 
-                    AND r2.register_name = 'temperature'
-                )
-            """)
-            
-            readings = {}
-            for row in cursor.fetchall():
-                device_name, value, timestamp = row
-                
-                # Debug: Log the raw timestamp format
-                logger.info(f"Raw timestamp for {device_name}: {timestamp} (type: {type(timestamp)})")
-                
-                try:
-                    # Handle different timestamp formats
-                    if isinstance(timestamp, str):
-                        # Try to parse as ISO format first
-                        try:
-                            last_reading_dt = datetime.fromisoformat(timestamp)
-                        except ValueError:
-                            # If that fails, try parsing as naive datetime and localize
-                            last_reading_dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
-                            last_reading_dt = self.cst_tz.localize(last_reading_dt)
-                    else:
-                        # If it's already a datetime object, use it directly
-                        last_reading_dt = timestamp
-                    
-                    # Ensure it's timezone-aware
-                    if last_reading_dt.tzinfo is None:
-                        last_reading_dt = self.cst_tz.localize(last_reading_dt)
-                    
-                    time_diff = datetime.now(self.cst_tz) - last_reading_dt
-                    connected = time_diff < timedelta(minutes=5)
-                    
-                    # Debug logging
-                    logger.info(f"Device {device_name}: last_reading={last_reading_dt}, now={datetime.now(self.cst_tz)}, diff={time_diff}, connected={connected}")
-                    
-                except (ValueError, TypeError) as e:
-                    logger.error(f"Error parsing timestamp for {device_name}: {timestamp}, error: {e}")
-                    # If we can't parse the timestamp, assume disconnected
-                    connected = False
-                    last_reading_dt = None
-                
-                readings[device_name] = {
-                    'temperature': value,
-                    'timestamp': timestamp,
-                    'connected': connected
-                }
-            
-            conn.close()
-            return readings
-            
-        except Exception as e:
-            logger.error(f"Error getting latest readings: {e}")
-            return {}
-    
     def _get_historical_data(self, days=1):
-        """Get historical data for the specified number of days"""
+        """Get historical data from new schema"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Get data from the last N days in CST
-            start_date = datetime.now(self.cst_tz) - timedelta(days=days)
-            
-            # Convert timezone-aware datetime to naive datetime for database comparison
-            if start_date.tzinfo is not None:
-                start_date = start_date.replace(tzinfo=None)
+            # Get data from the last N days
+            start_date = (datetime.now(self.cst_tz) - timedelta(days=days)).strftime('%Y-%m-%d')
             
             cursor.execute("""
-                SELECT device_name, value, timestamp
+                SELECT date, timestamp, preheat, main_heat, rib_heat
                 FROM readings
-                WHERE register_name = 'temperature'
-                AND timestamp >= ?
-                ORDER BY timestamp DESC
+                WHERE date >= ?
+                ORDER BY date ASC, timestamp ASC
             """, (start_date,))
             
-            data = {}
+            data = {
+                'preheat': [],
+                'main_heat': [],
+                'rib_heat': []
+            }
+            
             for row in cursor.fetchall():
-                device_name, value, timestamp = row
-                if device_name not in data:
-                    data[device_name] = []
+                date_str, time_str, preheat, main_heat, rib_heat = row
+                timestamp_str = f"{date_str} {time_str}"
                 
-                # Convert timestamp to CST for display
-                cst_timestamp = self._format_timestamp_cst(timestamp)
+                if preheat is not None:
+                    data['preheat'].append({
+                        'temperature': preheat,
+                        'timestamp': timestamp_str
+                    })
                 
-                data[device_name].append({
-                    'temperature': value,
-                    'timestamp': cst_timestamp
-                })
+                if main_heat is not None:
+                    data['main_heat'].append({
+                        'temperature': main_heat,
+                        'timestamp': timestamp_str
+                    })
+                
+                if rib_heat is not None:
+                    data['rib_heat'].append({
+                        'temperature': rib_heat,
+                        'timestamp': timestamp_str
+                    })
             
             conn.close()
             return data
@@ -401,29 +392,33 @@ class VulcanSentinelWebServer:
             return {'devices': []}
     
     def _get_csv_data(self, device_name):
-        """Generate CSV data for a specific device"""
+        """Download CSV data for a device from new schema"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
             # Get all temperature readings for the device
             cursor.execute("""
-                SELECT timestamp, value
+                SELECT date, timestamp, preheat, main_heat, rib_heat
                 FROM readings
-                WHERE device_name = ? AND register_name = 'temperature'
-                ORDER BY timestamp DESC
-            """, (device_name,))
+                WHERE preheat IS NOT NULL OR main_heat IS NOT NULL OR rib_heat IS NOT NULL
+                ORDER BY date DESC, timestamp DESC
+            """)
             
             # Create CSV in memory
             output = StringIO()
             writer = csv.writer(output)
-            writer.writerow(['Timestamp', 'Temperature (°F)'])
+            writer.writerow(['Date', 'Time', 'Preheat (°F)', 'Main Heat (°F)', 'Rib Heat (°F)'])
             
             for row in cursor.fetchall():
-                timestamp, value = row
-                # Convert timestamp to CST for CSV
-                cst_timestamp = self._format_timestamp_cst(timestamp)
-                writer.writerow([cst_timestamp, value])
+                date_str, time_str, preheat, main_heat, rib_heat = row
+                writer.writerow([
+                    date_str, 
+                    time_str, 
+                    preheat if preheat is not None else '',
+                    main_heat if main_heat is not None else '',
+                    rib_heat if rib_heat is not None else ''
+                ])
             
             conn.close()
             
@@ -434,26 +429,26 @@ class VulcanSentinelWebServer:
                 BytesIO(csv_data),
                 mimetype='text/csv',
                 as_attachment=True,
-                download_name=f'{device_name}_data_{datetime.now().strftime("%Y%m%d")}.csv'
+                download_name=f'temperature_data_{datetime.now().strftime("%Y%m%d")}.csv'
             )
             
         except Exception as e:
-            logger.error(f"Error generating CSV for {device_name}: {e}")
+            logger.error(f"Error generating CSV: {e}")
             return jsonify({'error': str(e)}), 500
     
     def _cleanup_duplicate_readings(self):
-        """Clean up duplicate readings with the same timestamp"""
+        """Clean up duplicate readings with the same timestamp in new schema"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Find and delete duplicate readings
+            # Find and delete duplicate readings based on date and timestamp
             cursor.execute("""
                 DELETE FROM readings 
                 WHERE id NOT IN (
                     SELECT MIN(id) 
                     FROM readings 
-                    GROUP BY device_name, register_name, timestamp
+                    GROUP BY date, timestamp
                 )
             """)
             
@@ -476,7 +471,7 @@ class VulcanSentinelWebServer:
             }
     
     def _get_storage_info(self):
-        """Get comprehensive storage usage information"""
+        """Get comprehensive storage usage information for new schema"""
         try:
             # Get system storage information
             disk_usage = shutil.disk_usage(os.path.dirname(self.db_path))
@@ -499,51 +494,42 @@ class VulcanSentinelWebServer:
                 
                 # Get oldest and newest records
                 if record_count > 0:
-                    cursor.execute("SELECT MIN(timestamp), MAX(timestamp) FROM readings")
+                    cursor.execute("SELECT MIN(date || ' ' || timestamp), MAX(date || ' ' || timestamp) FROM readings")
                     oldest, newest = cursor.fetchone()
                     if oldest:
-                        oldest_record = self._format_timestamp_cst(oldest)
+                        oldest_record = oldest
                     if newest:
-                        newest_record = self._format_timestamp_cst(newest)
+                        newest_record = newest
                 
                 conn.close()
             
-            # Calculate data consumption
-            daily_consumption = self._calculate_data_consumption(1)
-            weekly_consumption = self._calculate_data_consumption(7)
-            monthly_consumption = self._calculate_data_consumption(30)
-            
-            # Calculate average daily consumption (last 30 days)
-            avg_daily_consumption = monthly_consumption / 30 if monthly_consumption > 0 else 0
+            # Calculate storage percentages
+            total_space = disk_usage.total
+            used_space = disk_usage.used
+            free_space = disk_usage.free
+            used_percentage = (used_space / total_space) * 100 if total_space > 0 else 0
             
             return {
                 'system_storage': {
-                    'total': disk_usage.total,
-                    'used': disk_usage.used,
-                    'available': disk_usage.free
+                    'total_gb': round(total_space / (1024**3), 2),
+                    'used_gb': round(used_space / (1024**3), 2),
+                    'free_gb': round(free_space / (1024**3), 2),
+                    'used_percentage': round(used_percentage, 1)
                 },
-                'database_size': db_size,
-                'record_count': record_count,
-                'oldest_record': oldest_record or 'N/A',
-                'newest_record': newest_record or 'N/A',
-                'daily_consumption': daily_consumption,
-                'weekly_consumption': weekly_consumption,
-                'monthly_consumption': monthly_consumption,
-                'avg_daily_consumption': avg_daily_consumption
+                'database': {
+                    'size_mb': round(db_size / (1024**2), 2),
+                    'record_count': record_count,
+                    'oldest_record': oldest_record,
+                    'newest_record': newest_record
+                },
+                'timestamp': datetime.now(self.cst_tz).isoformat()
             }
             
         except Exception as e:
             logger.error(f"Error getting storage info: {e}")
             return {
-                'system_storage': {'total': 0, 'used': 0, 'available': 0},
-                'database_size': 0,
-                'record_count': 0,
-                'oldest_record': 'N/A',
-                'newest_record': 'N/A',
-                'daily_consumption': 0,
-                'weekly_consumption': 0,
-                'monthly_consumption': 0,
-                'avg_daily_consumption': 0
+                'error': str(e),
+                'timestamp': datetime.now(self.cst_tz).isoformat()
             }
     
     def _calculate_data_consumption(self, days):
