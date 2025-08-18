@@ -212,16 +212,27 @@ async function updateStorageInfo() {
             databaseSize.innerHTML = '<div class="storage-info">Database information unavailable</div>';
         }
         
-        // Update data consumption (simplified since we don't have consumption data)
+        // Update data consumption
         const dataConsumption = document.getElementById('data-consumption');
-        dataConsumption.innerHTML = `
-            <div class="storage-info">
-                <div>Data collection active</div>
-                <div>Real-time monitoring</div>
-                <div>Temperature readings</div>
-                <div>Historical data available</div>
-            </div>
-        `;
+        if (data.data_consumption) {
+            dataConsumption.innerHTML = `
+                <div class="storage-info">
+                    <div>Status: ${data.data_consumption.status}</div>
+                    <div>24h Records: ${data.data_consumption.daily_records.toLocaleString()}</div>
+                    <div>24h Size: ${data.data_consumption.daily_size_mb} MB</div>
+                    <div>Real-time monitoring</div>
+                </div>
+            `;
+        } else {
+            dataConsumption.innerHTML = `
+                <div class="storage-info">
+                    <div>Data collection active</div>
+                    <div>Real-time monitoring</div>
+                    <div>Temperature readings</div>
+                    <div>Historical data available</div>
+                </div>
+            `;
+        }
         
     } catch (error) {
         console.error('Error updating storage info:', error);

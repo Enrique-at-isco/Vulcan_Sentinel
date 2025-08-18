@@ -702,6 +702,40 @@ class VulcanSentinelWebServer:
                     db_size = 0
                     record_count = 0
             
+            # Calculate data consumption for last 24 hours
+            try:
+                conn = sqlite3.connect(self.db_path)
+                cursor = conn.cursor()
+                
+                # Get data from the last 24 hours
+                start_date = datetime.now(self.cst_tz) - timedelta(days=1)
+                start_date_str = start_date.strftime('%Y-%m-%d')
+                
+                cursor.execute("""
+                    SELECT COUNT(*) as record_count
+                    FROM readings
+                    WHERE date >= ?
+                """, (start_date_str,))
+                
+                daily_record_count = cursor.fetchone()[0]
+                conn.close()
+                
+                # Estimate data size (rough calculation)
+                estimated_size_mb = (daily_record_count * 100) / (1024 * 1024)  # ~100 bytes per record
+                
+                data_consumption = {
+                    'daily_records': daily_record_count,
+                    'daily_size_mb': round(estimated_size_mb, 2),
+                    'status': 'Active' if daily_record_count > 0 else 'No recent data'
+                }
+            except Exception as e:
+                logger.error(f"Error calculating data consumption: {e}")
+                data_consumption = {
+                    'daily_records': 0,
+                    'daily_size_mb': 0,
+                    'status': 'Error calculating'
+                }
+            
             return {
                 'system_storage': system_storage,
                 'database': {
@@ -710,6 +744,7 @@ class VulcanSentinelWebServer:
                     'oldest_record': oldest_record,
                     'newest_record': newest_record
                 },
+                'data_consumption': data_consumption,
                 'timestamp': datetime.now(self.cst_tz).isoformat()
             }
             
