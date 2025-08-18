@@ -153,20 +153,37 @@ class VulcanSentinelWebServer:
     def _format_timestamp_cst(self, timestamp_str):
         """Format timestamp to CST timezone with military time"""
         try:
-            if timestamp_str == 'N/A':
+            if timestamp_str == 'N/A' or timestamp_str is None:
                 return 'N/A'
             
-            # Parse the timestamp (assuming it's in UTC)
-            dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+            # Handle different timestamp formats
+            if isinstance(timestamp_str, str):
+                # Try to parse as ISO format first
+                try:
+                    dt = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
+                except ValueError:
+                    # If that fails, try parsing as naive datetime and localize
+                    dt = datetime.strptime(timestamp_str, '%Y-%m-%d %H:%M:%S')
+                    dt = self.cst_tz.localize(dt)
+            else:
+                # If it's already a datetime object, use it directly
+                dt = timestamp_str
             
-            # Convert to CST
-            cst_dt = dt.astimezone(self.cst_tz)
+            # Ensure it's timezone-aware
+            if dt.tzinfo is None:
+                dt = self.cst_tz.localize(dt)
+            
+            # Convert to CST if it's not already
+            if dt.tzinfo != self.cst_tz:
+                cst_dt = dt.astimezone(self.cst_tz)
+            else:
+                cst_dt = dt
             
             # Format in military time
             return cst_dt.strftime('%Y-%m-%d %H:%M:%S')
         except Exception as e:
             logger.error(f"Error formatting timestamp {timestamp_str}: {e}")
-            return timestamp_str
+            return str(timestamp_str) if timestamp_str else 'N/A'
     
     def _get_system_status(self):
         """Get system status from database"""
@@ -184,15 +201,36 @@ class VulcanSentinelWebServer:
             devices = {}
             for row in cursor.fetchall():
                 device_name, last_reading = row
-                # Consider device connected if it has a reading in the last 5 minutes
-                last_reading_dt = datetime.fromisoformat(last_reading)
-                last_reading_dt = self.cst_tz.localize(last_reading_dt)
-                connected = (datetime.now(self.cst_tz) - last_reading_dt) < timedelta(minutes=5)
+                
+                try:
+                    # Handle different timestamp formats
+                    if isinstance(last_reading, str):
+                        # Try to parse as ISO format first
+                        try:
+                            last_reading_dt = datetime.fromisoformat(last_reading)
+                        except ValueError:
+                            # If that fails, try parsing as naive datetime and localize
+                            last_reading_dt = datetime.strptime(last_reading, '%Y-%m-%d %H:%M:%S')
+                            last_reading_dt = self.cst_tz.localize(last_reading_dt)
+                    else:
+                        # If it's already a datetime object, use it directly
+                        last_reading_dt = last_reading
+                    
+                    # Ensure it's timezone-aware
+                    if last_reading_dt.tzinfo is None:
+                        last_reading_dt = self.cst_tz.localize(last_reading_dt)
+                    
+                    connected = (datetime.now(self.cst_tz) - last_reading_dt) < timedelta(minutes=5)
+                    
+                except (ValueError, TypeError) as e:
+                    logger.error(f"Error parsing timestamp for {device_name}: {last_reading}, error: {e}")
+                    connected = False
+                    last_reading_dt = None
                 
                 devices[device_name] = {
                     'connected': connected,
                     'last_reading': last_reading,
-                    'last_reading_dt': last_reading_dt.isoformat()
+                    'last_reading_dt': last_reading_dt.isoformat() if last_reading_dt else None
                 }
             
             conn.close()
@@ -238,16 +276,30 @@ class VulcanSentinelWebServer:
                 logger.info(f"Raw timestamp for {device_name}: {timestamp} (type: {type(timestamp)})")
                 
                 try:
-                    # Parse the timestamp and make it timezone-aware (assume it's in CST)
-                    last_reading_dt = datetime.fromisoformat(timestamp)
-                    last_reading_dt = self.cst_tz.localize(last_reading_dt)
+                    # Handle different timestamp formats
+                    if isinstance(timestamp, str):
+                        # Try to parse as ISO format first
+                        try:
+                            last_reading_dt = datetime.fromisoformat(timestamp)
+                        except ValueError:
+                            # If that fails, try parsing as naive datetime and localize
+                            last_reading_dt = datetime.strptime(timestamp, '%Y-%m-%d %H:%M:%S')
+                            last_reading_dt = self.cst_tz.localize(last_reading_dt)
+                    else:
+                        # If it's already a datetime object, use it directly
+                        last_reading_dt = timestamp
+                    
+                    # Ensure it's timezone-aware
+                    if last_reading_dt.tzinfo is None:
+                        last_reading_dt = self.cst_tz.localize(last_reading_dt)
+                    
                     time_diff = datetime.now(self.cst_tz) - last_reading_dt
                     connected = time_diff < timedelta(minutes=5)
                     
                     # Debug logging
                     logger.info(f"Device {device_name}: last_reading={last_reading_dt}, now={datetime.now(self.cst_tz)}, diff={time_diff}, connected={connected}")
                     
-                except ValueError as e:
+                except (ValueError, TypeError) as e:
                     logger.error(f"Error parsing timestamp for {device_name}: {timestamp}, error: {e}")
                     # If we can't parse the timestamp, assume disconnected
                     connected = False
