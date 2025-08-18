@@ -125,29 +125,47 @@ class DatabaseManager:
             
             existing = cursor.fetchone()
             
+            # Extract the temperature value from the readings dict
+            # The readings dict contains {'temperature': value} for each device
+            temperature_value = readings.get('temperature')
+            
             if existing:
-                # Update existing record
-                cursor.execute("""
-                    UPDATE readings 
-                    SET preheat = ?, main_heat = ?, rib_heat = ?
-                    WHERE date = ? AND timestamp = ?
-                """, (
-                    readings.get('preheat'),
-                    readings.get('main_heat'), 
-                    readings.get('rib_heat'),
-                    date_str, time_str
-                ))
+                # Update existing record - only update the column for this specific device
+                if device_name == 'preheat':
+                    cursor.execute("""
+                        UPDATE readings 
+                        SET preheat = ?
+                        WHERE date = ? AND timestamp = ?
+                    """, (temperature_value, date_str, time_str))
+                elif device_name == 'main_heat':
+                    cursor.execute("""
+                        UPDATE readings 
+                        SET main_heat = ?
+                        WHERE date = ? AND timestamp = ?
+                    """, (temperature_value, date_str, time_str))
+                elif device_name == 'rib_heat':
+                    cursor.execute("""
+                        UPDATE readings 
+                        SET rib_heat = ?
+                        WHERE date = ? AND timestamp = ?
+                    """, (temperature_value, date_str, time_str))
             else:
-                # Insert new record
-                cursor.execute("""
-                    INSERT INTO readings (date, timestamp, preheat, main_heat, rib_heat)
-                    VALUES (?, ?, ?, ?, ?)
-                """, (
-                    date_str, time_str,
-                    readings.get('preheat'),
-                    readings.get('main_heat'),
-                    readings.get('rib_heat')
-                ))
+                # Insert new record - only set the column for this specific device
+                if device_name == 'preheat':
+                    cursor.execute("""
+                        INSERT INTO readings (date, timestamp, preheat, main_heat, rib_heat)
+                        VALUES (?, ?, ?, NULL, NULL)
+                    """, (date_str, time_str, temperature_value))
+                elif device_name == 'main_heat':
+                    cursor.execute("""
+                        INSERT INTO readings (date, timestamp, preheat, main_heat, rib_heat)
+                        VALUES (?, ?, NULL, ?, NULL)
+                    """, (date_str, time_str, temperature_value))
+                elif device_name == 'rib_heat':
+                    cursor.execute("""
+                        INSERT INTO readings (date, timestamp, preheat, main_heat, rib_heat)
+                        VALUES (?, ?, NULL, NULL, ?)
+                    """, (date_str, time_str, temperature_value))
             
             self.conn.commit()
             logger.debug(f"Stored readings for {device_name} at {date_str} {time_str}")
