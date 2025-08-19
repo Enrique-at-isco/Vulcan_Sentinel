@@ -344,6 +344,18 @@ class ReportGenerator:
                            linewidth=linewidth,
                            color='black')
                 else:
+                    # Add a placeholder line for sensors with no data to show in legend
+                    # Use a dummy line that won't be visible but will appear in legend
+                    linestyle, linewidth = line_styles.get(sensor_name, ('solid', 2))
+                    
+                    # Create a dummy line with no data points but with the correct style
+                    ax.plot([], [], 
+                           label=f"{sensor_name.replace('_', ' ').title()} (No Data)",
+                           linestyle=linestyle,
+                           linewidth=linewidth,
+                           color='black',
+                           alpha=0.5)
+                    
                     # Add a note for sensors with no data
                     ax.text(0.02, 0.98 - (all_sensors.index(sensor_name) * 0.05), 
                            f"{sensor_name.replace('_', ' ').title()}: No data available",
