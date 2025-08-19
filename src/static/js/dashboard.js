@@ -15,10 +15,6 @@ const chartBorderColors = {
 let temperatureChart;
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize clock
-    updateClock();
-    setInterval(updateClock, 1000);
-    
     const ctx = document.getElementById('temperatureChart').getContext('2d');
     temperatureChart = new Chart(ctx, {
         type: 'line',
@@ -263,25 +259,4 @@ async function cleanupDuplicates() {
     }
 }
 
-// Function to update clock
-function updateClock() {
-    const now = new Date();
-    
-    // Update date
-    const dateOptions = { 
-        weekday: 'short', 
-        year: 'numeric', 
-        month: 'short', 
-        day: 'numeric' 
-    };
-    document.getElementById('currentDate').textContent = now.toLocaleDateString('en-US', dateOptions);
-    
-    // Update time
-    const timeOptions = { 
-        hour: '2-digit', 
-        minute: '2-digit', 
-        second: '2-digit',
-        hour12: false 
-    };
-    document.getElementById('currentTime').textContent = now.toLocaleTimeString('en-US', timeOptions);
-} 
+ 
