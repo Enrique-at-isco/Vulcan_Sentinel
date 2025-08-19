@@ -115,6 +115,14 @@ class DatabaseManager:
             self.conn.commit()
             logger.info("Database tables created successfully")
             
+            # Initialize default setpoints if table is empty
+            cursor.execute("SELECT COUNT(*) FROM setpoints")
+            if cursor.fetchone()[0] == 0:
+                logger.info("Initializing default setpoints")
+                self.store_setpoint("preheat", 150.0, 5.0)
+                self.store_setpoint("main_heat", 200.0, 5.0)
+                self.store_setpoint("rib_heat", 175.0, 5.0)
+            
         except Exception as e:
             logger.error(f"Failed to create database tables: {e}")
             raise

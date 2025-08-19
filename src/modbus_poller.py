@@ -236,16 +236,23 @@ class ModbusPoller:
                 logger.debug(f"No setpoint register configured for {device.name}")
                 return
             
+            # Check if device is connected
+            if not device.client or not device.client.is_socket_open():
+                if not self._connect_device(device):
+                    logger.warning(f"Cannot read setpoint from {device.name} - device not connected")
+                    return
+            
             # Read setpoint register (Parameter ID 7007, CIP Instance ID 1, CIP Attribute ID 7)
             # Based on the registry info, this is the "Active Closed-Loop Set Point"
             setpoint_address = device.setpoint_register
             logger.debug(f"Reading setpoint from {device.name} at address {setpoint_address}")
             
             # Read 2 registers starting at the setpoint address
-            result = device.client.read_input_registers(setpoint_address, 2, slave=device.slave_id)
+            # Setpoints are typically stored in holding registers, not input registers
+            result = device.client.read_holding_registers(setpoint_address, 2, slave=device.slave_id)
             
             if result.isError():
-                logger.warning(f"Error reading setpoint from {device.name}")
+                logger.warning(f"Error reading setpoint from {device.name}: {result}")
                 return
             
             logger.debug(f"Raw setpoint registers from {device.name}: {result.registers}")
