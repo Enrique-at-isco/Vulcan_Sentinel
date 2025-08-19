@@ -101,6 +101,7 @@ class ModbusPoller:
                 )
                 self.devices[device_id] = device
                 logger.info(f"Loaded device: {device.name} at {device.ip}")
+                logger.info(f"Device {device.name} setpoint_register: {device.setpoint_register}")
                 
         except Exception as e:
             logger.error(f"Failed to load device configuration: {e}")
@@ -216,14 +217,14 @@ class ModbusPoller:
                 
                 device._setpoint_counter += 1
                 logger.debug(f"Setpoint counter for {device.name}: {device._setpoint_counter}/10")
+                
+                # Force setpoint reading on every cycle for debugging
+                logger.info(f"Attempting setpoint read for {device.name} (forced)")
+                self._read_and_store_setpoints(device)
+                
                 if device._setpoint_counter >= 10:  # Read setpoints every 10 cycles
                     device._setpoint_counter = 0
                     logger.info(f"Triggering setpoint read for {device.name}")
-                    self._read_and_store_setpoints(device)
-                
-                # Also read setpoints immediately for debugging
-                if device._setpoint_counter == 1:  # Read setpoints on first cycle for immediate testing
-                    logger.info(f"Immediate setpoint read for {device.name} (debug)")
                     self._read_and_store_setpoints(device)
                 
                 # Wait for next polling interval
