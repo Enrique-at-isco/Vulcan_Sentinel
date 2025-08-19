@@ -176,48 +176,110 @@ class DatabaseManager:
             raise
     
     def get_latest_readings(self, device_name: Optional[str] = None) -> List[Dict[str, Any]]:
-        """Get the latest readings for all devices or a specific device"""
+        """Get the latest readings for all devices or a specific device using new schema"""
         try:
             cursor = self.conn.cursor()
             
             if device_name:
+                # Get latest reading for specific device
                 cursor.execute("""
-                    SELECT r.*, d.ip_address, d.port, d.slave_id
-                    FROM readings r
-                    JOIN devices d ON r.device_name = d.name
-                    WHERE r.device_name = ?
-                    AND r.timestamp = (
-                        SELECT MAX(timestamp) 
-                        FROM readings 
-                        WHERE device_name = r.device_name
+                    SELECT date, timestamp, preheat, main_heat, rib_heat
+                    FROM readings
+                    WHERE date = (
+                        SELECT MAX(date) FROM readings
+                    ) AND timestamp = (
+                        SELECT MAX(timestamp) FROM readings WHERE date = (
+                            SELECT MAX(date) FROM readings
+                        )
                     )
-                    ORDER BY r.register_name
-                """, (device_name,))
-            else:
-                cursor.execute("""
-                    SELECT r.*, d.ip_address, d.port, d.slave_id
-                    FROM readings r
-                    JOIN devices d ON r.device_name = d.name
-                    WHERE r.timestamp = (
-                        SELECT MAX(timestamp) 
-                        FROM readings r2 
-                        WHERE r2.device_name = r.device_name
-                    )
-                    ORDER BY r.device_name, r.register_name
                 """)
+                
+                row = cursor.fetchone()
+                if row:
+                    date_str, time_str, preheat, main_heat, rib_heat = row
+                    
+                    # Extract temperature for the specific device
+                    temperature = None
+                    if device_name == 'preheat':
+                        temperature = preheat
+                    elif device_name == 'main_heat':
+                        temperature = main_heat
+                    elif device_name == 'rib_heat':
+                        temperature = rib_heat
+                    
+                    if temperature is not None:
+                        timestamp_str = f"{date_str} {time_str}"
+                        result = {
+                            'device_name': device_name,
+                            'register_name': 'temperature',
+                            'value': temperature,
+                            'timestamp': timestamp_str,
+                            'date': date_str,
+                            'time': time_str
+                        }
+                        return [result]
+            else:
+                # Get latest readings for all devices
+                cursor.execute("""
+                    SELECT date, timestamp, preheat, main_heat, rib_heat
+                    FROM readings
+                    WHERE date = (
+                        SELECT MAX(date) FROM readings
+                    ) AND timestamp = (
+                        SELECT MAX(timestamp) FROM readings WHERE date = (
+                            SELECT MAX(date) FROM readings
+                        )
+                    )
+                """)
+                
+                row = cursor.fetchone()
+                if row:
+                    date_str, time_str, preheat, main_heat, rib_heat = row
+                    timestamp_str = f"{date_str} {time_str}"
+                    
+                    results = []
+                    
+                    # Create results for each device that has data
+                    if preheat is not None:
+                        results.append({
+                            'device_name': 'preheat',
+                            'register_name': 'temperature',
+                            'value': preheat,
+                            'timestamp': timestamp_str,
+                            'date': date_str,
+                            'time': time_str
+                        })
+                    
+                    if main_heat is not None:
+                        results.append({
+                            'device_name': 'main_heat',
+                            'register_name': 'temperature',
+                            'value': main_heat,
+                            'timestamp': timestamp_str,
+                            'date': date_str,
+                            'time': time_str
+                        })
+                    
+                    if rib_heat is not None:
+                        results.append({
+                            'device_name': 'rib_heat',
+                            'register_name': 'temperature',
+                            'value': rib_heat,
+                            'timestamp': timestamp_str,
+                            'date': date_str,
+                            'time': time_str
+                        })
+                    
+                    return results
             
-            results = []
-            for row in cursor.fetchall():
-                results.append(dict(row))
-            
-            return results
+            return []
             
         except Exception as e:
             logger.error(f"Failed to get latest readings: {e}")
             return []
     
     def get_readings_range(self, device_name: str, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
-        """Get readings for a device within a time range"""
+        """Get readings for a device within a time range using new schema"""
         try:
             cursor = self.conn.cursor()
             
@@ -230,15 +292,59 @@ class DatabaseManager:
             
             logger.info(f"Querying database for {device_name} from {start_time} to {end_time}")
             
-            cursor.execute("""
-                SELECT * FROM readings
-                WHERE device_name = ? AND timestamp BETWEEN ? AND ?
-                ORDER BY timestamp ASC
-            """, (device_name, start_time, end_time))
+            # Convert datetime objects to date and time strings for the new schema
+            start_date = start_time.strftime('%Y-%m-%d')
+            start_time_str = start_time.strftime('%H:%M:%S')
+            end_date = end_time.strftime('%Y-%m-%d')
+            end_time_str = end_time.strftime('%H:%M:%S')
+            
+            # Query based on the new schema with date and timestamp columns
+            if start_date == end_date:
+                # Same day query
+                cursor.execute("""
+                    SELECT date, timestamp, preheat, main_heat, rib_heat
+                    FROM readings
+                    WHERE date = ? AND timestamp BETWEEN ? AND ?
+                    ORDER BY date ASC, timestamp ASC
+                """, (start_date, start_time_str, end_time_str))
+            else:
+                # Cross-day query
+                cursor.execute("""
+                    SELECT date, timestamp, preheat, main_heat, rib_heat
+                    FROM readings
+                    WHERE (date > ? OR (date = ? AND timestamp >= ?))
+                    AND (date < ? OR (date = ? AND timestamp <= ?))
+                    ORDER BY date ASC, timestamp ASC
+                """, (start_date, start_date, start_time_str, end_date, end_date, end_time_str))
             
             results = []
             for row in cursor.fetchall():
-                results.append(dict(row))
+                date_str, time_str, preheat, main_heat, rib_heat = row
+                
+                # Create a result dict that matches the expected format
+                # Extract the temperature value for the specific device
+                temperature = None
+                if device_name == 'preheat':
+                    temperature = preheat
+                elif device_name == 'main_heat':
+                    temperature = main_heat
+                elif device_name == 'rib_heat':
+                    temperature = rib_heat
+                
+                if temperature is not None:
+                    # Create a timestamp string that combines date and time
+                    timestamp_str = f"{date_str} {time_str}"
+                    
+                    # Create a result dict that matches the old schema format
+                    result = {
+                        'device_name': device_name,
+                        'register_name': 'temperature',
+                        'value': temperature,
+                        'timestamp': timestamp_str,
+                        'date': date_str,
+                        'time': time_str
+                    }
+                    results.append(result)
             
             logger.info(f"Database query returned {len(results)} results for {device_name}")
             
