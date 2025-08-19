@@ -122,6 +122,8 @@ class DatabaseManager:
                 self.store_setpoint("preheat", 150.0, 5.0)
                 self.store_setpoint("main_heat", 200.0, 5.0)
                 self.store_setpoint("rib_heat", 175.0, 5.0)
+            else:
+                logger.info("Setpoints table already has data")
             
         except Exception as e:
             logger.error(f"Failed to create database tables: {e}")

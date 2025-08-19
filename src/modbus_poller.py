@@ -215,8 +215,10 @@ class ModbusPoller:
                     device._setpoint_counter = 0
                 
                 device._setpoint_counter += 1
+                logger.debug(f"Setpoint counter for {device.name}: {device._setpoint_counter}/10")
                 if device._setpoint_counter >= 10:  # Read setpoints every 10 cycles
                     device._setpoint_counter = 0
+                    logger.info(f"Triggering setpoint read for {device.name}")
                     self._read_and_store_setpoints(device)
                 
                 # Wait for next polling interval
@@ -231,13 +233,18 @@ class ModbusPoller:
     def _read_and_store_setpoints(self, device: ModbusDevice):
         """Read and store setpoints for a device"""
         try:
+            logger.info(f"Attempting to read setpoint for {device.name}")
+            
             # Check if device has setpoint register configured
             if not device.setpoint_register:
-                logger.debug(f"No setpoint register configured for {device.name}")
+                logger.warning(f"No setpoint register configured for {device.name}")
                 return
+            
+            logger.info(f"Setpoint register configured for {device.name}: {device.setpoint_register}")
             
             # Check if device is connected
             if not device.client or not device.client.is_socket_open():
+                logger.warning(f"Device {device.name} not connected, attempting to connect...")
                 if not self._connect_device(device):
                     logger.warning(f"Cannot read setpoint from {device.name} - device not connected")
                     return
@@ -245,7 +252,7 @@ class ModbusPoller:
             # Read setpoint register (Parameter ID 7007, CIP Instance ID 1, CIP Attribute ID 7)
             # Based on the registry info, this is the "Active Closed-Loop Set Point"
             setpoint_address = device.setpoint_register
-            logger.debug(f"Reading setpoint from {device.name} at address {setpoint_address}")
+            logger.info(f"Reading setpoint from {device.name} at address {setpoint_address}")
             
             # Read 2 registers starting at the setpoint address
             # Setpoints are typically stored in holding registers, not input registers
@@ -255,7 +262,7 @@ class ModbusPoller:
                 logger.warning(f"Error reading setpoint from {device.name}: {result}")
                 return
             
-            logger.debug(f"Raw setpoint registers from {device.name}: {result.registers}")
+            logger.info(f"Raw setpoint registers from {device.name}: {result.registers}")
             
             # Decode the setpoint value (IEEE Float)
             decoder = BinaryPayloadDecoder.fromRegisters(
@@ -265,14 +272,14 @@ class ModbusPoller:
             )
             
             setpoint_value = decoder.decode_32bit_float()
-            logger.debug(f"Decoded setpoint value from {device.name}: {setpoint_value}")
+            logger.info(f"Decoded setpoint value from {device.name}: {setpoint_value}")
             
             if setpoint_value is not None:
                 try:
                     float_setpoint = float(setpoint_value)
                     # Store setpoint in database with default deviation of 5.0°F
                     self.db_manager.store_setpoint(device.name, float_setpoint, 5.0)
-                    logger.debug(f"Stored setpoint for {device.name}: {float_setpoint}°F")
+                    logger.info(f"Successfully stored setpoint for {device.name}: {float_setpoint}°F")
                 except (ValueError, TypeError) as e:
                     logger.error(f"Failed to convert setpoint to float: {setpoint_value}, error: {e}")
             else:
@@ -280,6 +287,8 @@ class ModbusPoller:
                 
         except Exception as e:
             logger.error(f"Error reading setpoints for {device.name}: {e}")
+            logger.error(f"Exception type: {type(e).__name__}")
+            logger.error(f"Exception details: {str(e)}")
     
     def _log_to_csv(self, device_name: str, timestamp: datetime, readings: Dict[str, float]):
         """Log readings to CSV file"""
