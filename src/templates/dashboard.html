@@ -22,7 +22,10 @@
                      <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
                          <div style="font-weight: bold; color: #333;">{{ device_name.replace('_', ' ').title() }}</div>
                          <div class="temperature">{{ data.temperature }}°F</div>
-                         <div style="text-align: center; color: #666; font-size: 0.9em;">Last updated: {{ format_timestamp_cst(data.timestamp) }}</div>
+                         <div style="text-align: center; color: #007bff; font-size: 0.9em; margin-top: 5px;">
+                             Setpoint: {{ data.setpoint }}°F
+                         </div>
+                         <div style="text-align: center; color: #666; font-size: 0.9em; margin-top: 5px;">Last updated: {{ format_timestamp_cst(data.timestamp) }}</div>
                      </div>
                  {% else %}
                      <div style="margin: 15px 0; padding: 15px; background: #f8f9fa; border-radius: 8px;">
@@ -32,7 +35,10 @@
                          {% else %}
                              <div class="temperature">{{ data.temperature }}°F</div>
                          {% endif %}
-                         <div style="text-align: center; color: #666; font-size: 0.9em;">⚠️ Disconnected</div>
+                         <div style="text-align: center; color: #007bff; font-size: 0.9em; margin-top: 5px;">
+                             Setpoint: {{ data.setpoint }}°F
+                         </div>
+                         <div style="text-align: center; color: #666; font-size: 0.9em; margin-top: 5px;">⚠️ Disconnected</div>
                      </div>
                  {% endif %}
              {% endfor %}

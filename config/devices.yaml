@@ -6,7 +6,7 @@ devices:
     slave_id: 1
     registers:
       temperature: 402
-      setpoint_register: 2173  # Active Closed-Loop Set Point register (402173 - 400000 = 2173)
+      setpoint_register: 2172  # Active Closed-Loop Set Point register (402173 - 400000 = 2173)
     polling_interval: 20
     description: "Preheat temperature sensor for process monitoring (Fahrenheit)"
     
@@ -17,7 +17,7 @@ devices:
     slave_id: 1
     registers:
       temperature: 402
-      setpoint_register: 2173  # Active Closed-Loop Set Point register (402173 - 400000 = 2173)
+      setpoint_register: 2172  # Active Closed-Loop Set Point register (402173 - 400000 = 2173)
     polling_interval: 20
     description: "Main heat temperature sensor for primary monitoring (Fahrenheit)"
     
@@ -28,6 +28,6 @@ devices:
   #   slave_id: 1
   #   registers:
   #     temperature: 402
-  #     setpoint_register: 2173  # Active Closed-Loop Set Point register (402173 - 400000 = 2173)
+  #     setpoint_register: 2172  # Active Closed-Loop Set Point register (402173 - 400000 = 2173)
   #   polling_interval: 20
   #   description: "Rib heat temperature sensor for secondary monitoring (Fahrenheit) - DISABLED" 

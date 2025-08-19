@@ -150,23 +150,7 @@ class VulcanSentinelWebServer:
             """Download a specific report"""
             return self._download_report(report_id)
         
-        @self.app.route('/setpoints')
-        def setpoints():
-            """Setpoints management page"""
-            return render_template('setpoints.html')
-        
-        @self.app.route('/api/setpoints')
-        def api_setpoints():
-            """Get all setpoints"""
-            return jsonify(self._get_all_setpoints())
-        
-        @self.app.route('/api/setpoints/<device_name>', methods=['GET', 'PUT'])
-        def api_setpoint(device_name):
-            """Get or update setpoint for a device"""
-            if request.method == 'GET':
-                return jsonify(self._get_setpoint(device_name))
-            elif request.method == 'PUT':
-                return jsonify(self._update_setpoint(device_name))
+
         
         @self.app.route('/api/reports/csv/<report_id>')
         def api_export_csv(report_id):
@@ -179,6 +163,7 @@ class VulcanSentinelWebServer:
             # Get latest data
             readings = self._get_latest_readings()
             status = self._get_system_status()
+            setpoints = self.db_manager.get_all_setpoints()
             
             # Ensure readings is a dictionary
             if not isinstance(readings, dict):
@@ -265,13 +250,17 @@ class VulcanSentinelWebServer:
             
             readings = {}
             
+            # Get setpoints for all devices
+            setpoints = self.db_manager.get_all_setpoints()
+            
             # Always include all three sensors
             # Preheat
             if preheat is not None:
                 readings['preheat'] = {
                     'temperature': preheat,
                     'timestamp': f"{date_str} {time_str}",
-                    'connected': connected
+                    'connected': connected,
+                    'setpoint': setpoints.get('preheat', {}).get('setpoint_value', 'N/A')
                 }
             else:
                 # Check if we have any recent preheat data
@@ -290,13 +279,15 @@ class VulcanSentinelWebServer:
                     readings['preheat'] = {
                         'temperature': p_temp,
                         'timestamp': f"{p_date} {p_time}",
-                        'connected': p_connected
+                        'connected': p_connected,
+                        'setpoint': setpoints.get('preheat', {}).get('setpoint_value', 'N/A')
                     }
                 else:
                     readings['preheat'] = {
                         'temperature': 'N/A',
                         'timestamp': 'N/A',
-                        'connected': False
+                        'connected': False,
+                        'setpoint': setpoints.get('preheat', {}).get('setpoint_value', 'N/A')
                     }
             
             # Main Heat
@@ -304,7 +295,8 @@ class VulcanSentinelWebServer:
                 readings['main_heat'] = {
                     'temperature': main_heat,
                     'timestamp': f"{date_str} {time_str}",
-                    'connected': connected
+                    'connected': connected,
+                    'setpoint': setpoints.get('main_heat', {}).get('setpoint_value', 'N/A')
                 }
             else:
                 # Check if we have any recent main_heat data
@@ -323,13 +315,15 @@ class VulcanSentinelWebServer:
                     readings['main_heat'] = {
                         'temperature': m_temp,
                         'timestamp': f"{m_date} {m_time}",
-                        'connected': m_connected
+                        'connected': m_connected,
+                        'setpoint': setpoints.get('main_heat', {}).get('setpoint_value', 'N/A')
                     }
                 else:
                     readings['main_heat'] = {
                         'temperature': 'N/A',
                         'timestamp': 'N/A',
-                        'connected': False
+                        'connected': False,
+                        'setpoint': setpoints.get('main_heat', {}).get('setpoint_value', 'N/A')
                     }
             
             # Rib Heat
@@ -337,14 +331,16 @@ class VulcanSentinelWebServer:
                 readings['rib_heat'] = {
                     'temperature': rib_heat,
                     'timestamp': f"{date_str} {time_str}",
-                    'connected': connected
+                    'connected': connected,
+                    'setpoint': setpoints.get('rib_heat', {}).get('setpoint_value', 'N/A')
                 }
             else:
                 # Show rib_heat as disconnected with N/A values
                 readings['rib_heat'] = {
                     'temperature': 'N/A',
                     'timestamp': 'N/A',
-                    'connected': False
+                    'connected': False,
+                    'setpoint': setpoints.get('rib_heat', {}).get('setpoint_value', 'N/A')
                 }
             
             conn.close()
@@ -862,67 +858,7 @@ class VulcanSentinelWebServer:
             logger.error(f"Error generating report: {e}")
             return {"error": str(e)}
     
-    def _get_all_setpoints(self):
-        """Get all setpoints"""
-        try:
-            setpoints = self.db_manager.get_all_setpoints()
-            return {
-                'success': True,
-                'setpoints': setpoints
-            }
-        except Exception as e:
-            logger.error(f"Failed to get setpoints: {e}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
-    
-    def _get_setpoint(self, device_name):
-        """Get setpoint for a specific device"""
-        try:
-            setpoint = self.db_manager.get_setpoint(device_name)
-            if setpoint:
-                return {
-                    'success': True,
-                    'setpoint': setpoint
-                }
-            else:
-                return {
-                    'success': False,
-                    'error': f'No setpoint found for {device_name}'
-                }
-        except Exception as e:
-            logger.error(f"Failed to get setpoint for {device_name}: {e}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
-    
-    def _update_setpoint(self, device_name):
-        """Update setpoint for a device"""
-        try:
-            data = request.get_json()
-            setpoint_value = data.get('setpoint_value')
-            deviation = data.get('deviation', 5.0)
-            
-            if setpoint_value is None:
-                return {
-                    'success': False,
-                    'error': 'setpoint_value is required'
-                }
-            
-            self.db_manager.store_setpoint(device_name, setpoint_value, deviation)
-            
-            return {
-                'success': True,
-                'message': f'Setpoint updated for {device_name}'
-            }
-        except Exception as e:
-            logger.error(f"Failed to update setpoint for {device_name}: {e}")
-            return {
-                'success': False,
-                'error': str(e)
-            }
+
     
     def _get_report_history(self, limit=50):
         """Get report history"""
