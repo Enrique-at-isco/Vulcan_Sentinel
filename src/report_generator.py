@@ -152,6 +152,9 @@ class ReportGenerator:
                 'run_duration': (end_time - start_time).total_seconds()
             }
             
+            # Define all expected sensors
+            all_sensors = ['preheat', 'main_heat', 'rib_heat']
+            
             # Get data for each sensor
             for device_id, device_config in devices_config['devices'].items():
                 sensor_name = device_config['name']
@@ -169,6 +172,24 @@ class ReportGenerator:
                         'statistics': self._calculate_sensor_statistics(readings),
                         'setpoints': self._get_setpoints(sensor_name),
                         'stages': self._identify_heat_stages(readings)
+                    }
+                else:
+                    # Include sensor with no data
+                    process_data['sensors'][sensor_name] = {
+                        'readings': [],
+                        'statistics': {},
+                        'setpoints': self._get_setpoints(sensor_name),
+                        'stages': []
+                    }
+            
+            # Ensure all expected sensors are included, even if not in device config
+            for sensor_name in all_sensors:
+                if sensor_name not in process_data['sensors']:
+                    process_data['sensors'][sensor_name] = {
+                        'readings': [],
+                        'statistics': {},
+                        'setpoints': self._get_setpoints(sensor_name),
+                        'stages': []
                     }
                     
             # Get trigger events
@@ -240,7 +261,7 @@ class ReportGenerator:
                 stage_start = timestamp
                 
         # Add final stage
-        if current_stage and stage_start:
+        if current_stage and stage_start and readings:
             stages.append({
                 'name': current_stage,
                 'start_time': stage_start,
@@ -294,25 +315,40 @@ class ReportGenerator:
             return []
             
     def _generate_temperature_plot(self, process_data: Dict[str, Any], report_id: str) -> str:
-        """Generate temperature time series plot"""
+        """Generate temperature time series plot with different line styles for black and white printing"""
         try:
             fig, ax = plt.subplots(figsize=(10, 6))
             
-            colors_map = {
-                'preheat': 'orange',
-                'main_heat': 'red',
-                'rib_heat': 'yellow'
+            # Define line styles for black and white printing
+            line_styles = {
+                'preheat': ('solid', 2),
+                'main_heat': ('dashed', 2),
+                'rib_heat': ('dotted', 2)
             }
             
-            for sensor_name, sensor_data in process_data['sensors'].items():
-                if 'readings' in sensor_data:
+            # Always include all three sensors, even if no data
+            all_sensors = ['preheat', 'main_heat', 'rib_heat']
+            
+            for sensor_name in all_sensors:
+                sensor_data = process_data['sensors'].get(sensor_name, {})
+                
+                if 'readings' in sensor_data and sensor_data['readings']:
                     timestamps = [datetime.fromisoformat(r['timestamp']) for r in sensor_data['readings']]
                     temperatures = [r['value'] for r in sensor_data['readings']]
                     
+                    linestyle, linewidth = line_styles.get(sensor_name, ('solid', 2))
+                    
                     ax.plot(timestamps, temperatures, 
                            label=sensor_name.replace('_', ' ').title(),
-                           color=colors_map.get(sensor_name, 'blue'),
-                           linewidth=2)
+                           linestyle=linestyle,
+                           linewidth=linewidth,
+                           color='black')
+                else:
+                    # Add a note for sensors with no data
+                    ax.text(0.02, 0.98 - (all_sensors.index(sensor_name) * 0.05), 
+                           f"{sensor_name.replace('_', ' ').title()}: No data available",
+                           transform=ax.transAxes, fontsize=10, style='italic',
+                           bbox=dict(boxstyle="round,pad=0.3", facecolor="lightgray", alpha=0.7))
                            
             ax.set_xlabel('Time')
             ax.set_ylabel('Temperature (°F)')
@@ -369,8 +405,13 @@ class ReportGenerator:
         """Format temperature data for table display"""
         table_data = [['Stage', 'Avg Temp (°F)', 'Min Temp (°F)', 'Max Temp (°F)', 'Duration']]
         
-        for sensor_name, sensor_data in process_data.get('sensors', {}).items():
-            if 'statistics' in sensor_data:
+        # Ensure all sensors are included in order
+        all_sensors = ['preheat', 'main_heat', 'rib_heat']
+        
+        for sensor_name in all_sensors:
+            sensor_data = process_data.get('sensors', {}).get(sensor_name, {})
+            
+            if 'statistics' in sensor_data and sensor_data['statistics']:
                 stats = sensor_data['statistics']
                 duration_str = f"{int(stats.get('duration', 0)):02d}:{int((stats.get('duration', 0) % 60)):02d}"
                 
@@ -381,6 +422,15 @@ class ReportGenerator:
                     f"{stats.get('maximum', 0):.1f}",
                     duration_str
                 ])
+            else:
+                # Show "No Data" for sensors without readings
+                table_data.append([
+                    sensor_name.replace('_', ' ').title(),
+                    "No Data",
+                    "No Data",
+                    "No Data",
+                    "00:00"
+                ])
                 
         return table_data
         
@@ -388,7 +438,12 @@ class ReportGenerator:
         """Format setpoints data for table display"""
         table_data = [['Stage', 'Set Temp (°F)', '+Dev', '-Dev']]
         
-        for sensor_name, sensor_data in process_data.get('sensors', {}).items():
+        # Ensure all sensors are included in order
+        all_sensors = ['preheat', 'main_heat', 'rib_heat']
+        
+        for sensor_name in all_sensors:
+            sensor_data = process_data.get('sensors', {}).get(sensor_name, {})
+            
             if 'setpoints' in sensor_data:
                 setpoints = sensor_data['setpoints']
                 dev = setpoints.get('deviation', 0)
@@ -396,6 +451,17 @@ class ReportGenerator:
                 table_data.append([
                     sensor_name.replace('_', ' ').title(),
                     f"{setpoints.get('set_temp', 0)}",
+                    f"+{dev}",
+                    f"-{dev}"
+                ])
+            else:
+                # Show default setpoints for sensors without data
+                default_setpoints = self._get_setpoints(sensor_name)
+                dev = default_setpoints.get('deviation', 0)
+                
+                table_data.append([
+                    sensor_name.replace('_', ' ').title(),
+                    f"{default_setpoints.get('set_temp', 0)}",
                     f"+{dev}",
                     f"-{dev}"
                 ])
@@ -713,7 +779,7 @@ class ReportGenerator:
             return []
             
     def export_report_csv(self, report_id: str) -> str:
-        """Export report data to CSV format"""
+        """Export report data to CSV format matching database readings table structure"""
         try:
             # Get report metadata to find the original parameters
             metadata_file = os.path.join(self.reports_dir, "report_metadata.json")
@@ -744,29 +810,58 @@ class ReportGenerator:
             start_time = datetime.fromisoformat(start_time_str)
             end_time = datetime.fromisoformat(end_time_str)
             
-            # Get the actual data from the database
-            process_data = self._get_process_data(start_time, end_time)
-            
+            # Query the database directly to get data in the readings table format
             csv_path = os.path.join(self.reports_dir, f"report_data_{report_id}.csv")
+            
+            # Connect to database and query the readings table directly
+            conn = sqlite3.connect(self.db_manager.db_path)
+            cursor = conn.cursor()
+            
+            # Convert datetime objects to date and time strings for the new schema
+            start_date = start_time.strftime('%Y-%m-%d')
+            start_time_str = start_time.strftime('%H:%M:%S')
+            end_date = end_time.strftime('%Y-%m-%d')
+            end_time_str = end_time.strftime('%H:%M:%S')
+            
+            # Query based on the new schema with date and timestamp columns
+            if start_date == end_date:
+                # Same day query
+                cursor.execute("""
+                    SELECT date, timestamp, preheat, main_heat, rib_heat
+                    FROM readings
+                    WHERE date = ? AND timestamp BETWEEN ? AND ?
+                    ORDER BY date ASC, timestamp ASC
+                """, (start_date, start_time_str, end_time_str))
+            else:
+                # Cross-day query
+                cursor.execute("""
+                    SELECT date, timestamp, preheat, main_heat, rib_heat
+                    FROM readings
+                    WHERE (date > ? OR (date = ? AND timestamp >= ?))
+                    AND (date < ? OR (date = ? AND timestamp <= ?))
+                    ORDER BY date ASC, timestamp ASC
+                """, (start_date, start_date, start_time_str, end_date, end_date, end_time_str))
+            
+            rows = cursor.fetchall()
+            conn.close()
             
             with open(csv_path, 'w', newline='') as f:
                 writer = csv.writer(f)
-                writer.writerow(['timestamp', 'temperature', 'stage', 'sensor'])
+                # Write header matching the database readings table structure
+                writer.writerow(['date', 'timestamp', 'preheat', 'main_heat', 'rib_heat'])
                 
-                # Write data for each sensor
-                for sensor_name, sensor_data in process_data.get('sensors', {}).items():
-                    readings = sensor_data.get('readings', [])
-                    
-                    for reading in readings:
-                        timestamp = reading.get('timestamp', '')
-                        temperature = reading.get('value', '')
-                        
-                        # Determine stage based on temperature ranges or other logic
-                        stage = self._determine_stage(temperature, sensor_name)
-                        
-                        writer.writerow([timestamp, temperature, stage, sensor_name])
+                # Write data rows
+                for row in rows:
+                    date_str, time_str, preheat, main_heat, rib_heat = row
+                    writer.writerow([
+                        date_str,
+                        time_str,
+                        preheat if preheat is not None else '',
+                        main_heat if main_heat is not None else '',
+                        rib_heat if rib_heat is not None else ''
+                    ])
                 
-            logger.info(f"CSV exported to {csv_path}")
+            logger.info(f"CSV exported to {csv_path} with {len(rows)} rows")
             return csv_path
             
         except Exception as e:

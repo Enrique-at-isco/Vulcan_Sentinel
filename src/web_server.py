@@ -582,7 +582,7 @@ class VulcanSentinelWebServer:
             # Create CSV in memory
             output = StringIO()
             writer = csv.writer(output)
-            writer.writerow(['Date', 'Time', 'Preheat (°F)', 'Main Heat (°F)', 'Rib Heat (°F)'])
+            writer.writerow(['date', 'timestamp', 'preheat', 'main_heat', 'rib_heat'])
             
             for row in cursor.fetchall():
                 date_str, time_str, preheat, main_heat, rib_heat = row
