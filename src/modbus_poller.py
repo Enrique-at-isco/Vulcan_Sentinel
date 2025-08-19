@@ -221,6 +221,11 @@ class ModbusPoller:
                     logger.info(f"Triggering setpoint read for {device.name}")
                     self._read_and_store_setpoints(device)
                 
+                # Also read setpoints immediately for debugging
+                if device._setpoint_counter == 1:  # Read setpoints on first cycle for immediate testing
+                    logger.info(f"Immediate setpoint read for {device.name} (debug)")
+                    self._read_and_store_setpoints(device)
+                
                 # Wait for next polling interval
                 time.sleep(device.polling_interval)
                 
@@ -255,8 +260,8 @@ class ModbusPoller:
             logger.info(f"Reading setpoint from {device.name} at address {setpoint_address}")
             
             # Read 2 registers starting at the setpoint address
-            # Setpoints are typically stored in holding registers, not input registers
-            result = device.client.read_holding_registers(setpoint_address, 2, slave=device.slave_id)
+            # Use input registers like temperature reading since that's working
+            result = device.client.read_input_registers(setpoint_address, 2, slave=device.slave_id)
             
             if result.isError():
                 logger.warning(f"Error reading setpoint from {device.name}: {result}")
