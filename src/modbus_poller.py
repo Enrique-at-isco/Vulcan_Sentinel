@@ -239,6 +239,7 @@ class ModbusPoller:
             # Read setpoint register (Parameter ID 7007, CIP Instance ID 1, CIP Attribute ID 7)
             # Based on the registry info, this is the "Active Closed-Loop Set Point"
             setpoint_address = device.setpoint_register
+            logger.debug(f"Reading setpoint from {device.name} at address {setpoint_address}")
             
             # Read 2 registers starting at the setpoint address
             result = device.client.read_input_registers(setpoint_address, 2, slave=device.slave_id)
@@ -246,6 +247,8 @@ class ModbusPoller:
             if result.isError():
                 logger.warning(f"Error reading setpoint from {device.name}")
                 return
+            
+            logger.debug(f"Raw setpoint registers from {device.name}: {result.registers}")
             
             # Decode the setpoint value (IEEE Float)
             decoder = BinaryPayloadDecoder.fromRegisters(
@@ -255,6 +258,7 @@ class ModbusPoller:
             )
             
             setpoint_value = decoder.decode_32bit_float()
+            logger.debug(f"Decoded setpoint value from {device.name}: {setpoint_value}")
             
             if setpoint_value is not None:
                 try:
