@@ -1,0 +1,233 @@
+{% extends "base.html" %}
+
+{% block title %}Temperature Setpoints - Vulcan Sentinel{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <h1 class="mb-4">Temperature Setpoints Management</h1>
+    
+    <div class="row">
+        <div class="col-md-8">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Current Setpoints</h5>
+                </div>
+                <div class="card-body">
+                    <div id="setpoints-table">
+                        <div class="text-center">
+                            <div class="spinner-border" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="col-md-4">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Setpoint Information</h5>
+                </div>
+                <div class="card-body">
+                    <p class="text-muted">
+                        Temperature setpoints are automatically read from the device registers 
+                        (Parameter ID 7007 - Active Closed-Loop Set Point) and stored in the database.
+                    </p>
+                    <p class="text-muted">
+                        The deviation value represents the acceptable temperature range 
+                        (±°F) around the setpoint.
+                    </p>
+                    <hr>
+                    <h6>Registry Information:</h6>
+                    <ul class="small text-muted">
+                        <li><strong>Parameter ID:</strong> 7007</li>
+                        <li><strong>Parameter Name:</strong> Active Closed-Loop Set Point</li>
+                        <li><strong>Range:</strong> -1,999.000 to 9,999.000°F</li>
+                        <li><strong>Data Type:</strong> IEEE Float</li>
+                        <li><strong>Register Address:</strong> 402173</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<!-- Edit Setpoint Modal -->
+<div class="modal fade" id="editSetpointModal" tabindex="-1">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Edit Setpoint</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <form id="editSetpointForm">
+                    <div class="mb-3">
+                        <label for="deviceName" class="form-label">Device</label>
+                        <input type="text" class="form-control" id="deviceName" readonly>
+                    </div>
+                    <div class="mb-3">
+                        <label for="setpointValue" class="form-label">Setpoint Temperature (°F)</label>
+                        <input type="number" class="form-control" id="setpointValue" step="0.1" min="-1999" max="9999" required>
+                    </div>
+                    <div class="mb-3">
+                        <label for="deviation" class="form-label">Deviation (±°F)</label>
+                        <input type="number" class="form-control" id="deviation" step="0.1" min="0" max="100" value="5.0" required>
+                    </div>
+                </form>
+            </div>
+            <div class="modal-footer">
+                <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+                <button type="button" class="btn btn-primary" onclick="saveSetpoint()">Save Changes</button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+let currentDeviceName = '';
+
+function loadSetpoints() {
+    fetch('/api/setpoints')
+        .then(response => response.json())
+        .then(data => {
+            if (data.success) {
+                displaySetpoints(data.setpoints);
+            } else {
+                showAlert('Error loading setpoints: ' + data.error, 'danger');
+            }
+        })
+        .catch(error => {
+            console.error('Error:', error);
+            showAlert('Failed to load setpoints', 'danger');
+        });
+}
+
+function displaySetpoints(setpoints) {
+    const container = document.getElementById('setpoints-table');
+    
+    if (Object.keys(setpoints).length === 0) {
+        container.innerHTML = `
+            <div class="alert alert-info">
+                No setpoints found. Setpoints will be automatically read from devices when available.
+            </div>
+        `;
+        return;
+    }
+    
+    let html = `
+        <div class="table-responsive">
+            <table class="table table-striped">
+                <thead>
+                    <tr>
+                        <th>Device</th>
+                        <th>Setpoint (°F)</th>
+                        <th>Deviation (±°F)</th>
+                        <th>Last Updated</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+    `;
+    
+    for (const [deviceName, setpoint] of Object.entries(setpoints)) {
+        const timestamp = new Date(setpoint.timestamp).toLocaleString();
+        html += `
+            <tr>
+                <td><strong>${deviceName.replace('_', ' ').toUpperCase()}</strong></td>
+                <td>${setpoint.setpoint_value.toFixed(1)}</td>
+                <td>${setpoint.deviation.toFixed(1)}</td>
+                <td>${timestamp}</td>
+                <td>
+                    <button class="btn btn-sm btn-outline-primary" onclick="editSetpoint('${deviceName}', ${setpoint.setpoint_value}, ${setpoint.deviation})">
+                        Edit
+                    </button>
+                </td>
+            </tr>
+        `;
+    }
+    
+    html += `
+                </tbody>
+            </table>
+        </div>
+    `;
+    
+    container.innerHTML = html;
+}
+
+function editSetpoint(deviceName, setpointValue, deviation) {
+    currentDeviceName = deviceName;
+    document.getElementById('deviceName').value = deviceName.replace('_', ' ').toUpperCase();
+    document.getElementById('setpointValue').value = setpointValue;
+    document.getElementById('deviation').value = deviation;
+    
+    const modal = new bootstrap.Modal(document.getElementById('editSetpointModal'));
+    modal.show();
+}
+
+function saveSetpoint() {
+    const setpointValue = parseFloat(document.getElementById('setpointValue').value);
+    const deviation = parseFloat(document.getElementById('deviation').value);
+    
+    if (isNaN(setpointValue) || isNaN(deviation)) {
+        showAlert('Please enter valid numbers', 'danger');
+        return;
+    }
+    
+    fetch(`/api/setpoints/${currentDeviceName}`, {
+        method: 'PUT',
+        headers: {
+            'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+            setpoint_value: setpointValue,
+            deviation: deviation
+        })
+    })
+    .then(response => response.json())
+    .then(data => {
+        if (data.success) {
+            showAlert('Setpoint updated successfully', 'success');
+            loadSetpoints(); // Reload the table
+            const modal = bootstrap.Modal.getInstance(document.getElementById('editSetpointModal'));
+            modal.hide();
+        } else {
+            showAlert('Error updating setpoint: ' + data.error, 'danger');
+        }
+    })
+    .catch(error => {
+        console.error('Error:', error);
+        showAlert('Failed to update setpoint', 'danger');
+    });
+}
+
+function showAlert(message, type) {
+    const alertDiv = document.createElement('div');
+    alertDiv.className = `alert alert-${type} alert-dismissible fade show`;
+    alertDiv.innerHTML = `
+        ${message}
+        <button type="button" class="btn-close" data-bs-dismiss="alert"></button>
+    `;
+    
+    const container = document.querySelector('.container');
+    container.insertBefore(alertDiv, container.firstChild);
+    
+    // Auto-dismiss after 5 seconds
+    setTimeout(() => {
+        if (alertDiv.parentNode) {
+            alertDiv.remove();
+        }
+    }, 5000);
+}
+
+// Load setpoints when page loads
+document.addEventListener('DOMContentLoaded', function() {
+    loadSetpoints();
+    
+    // Refresh setpoints every 30 seconds
+    setInterval(loadSetpoints, 30000);
+});
+</script>
+{% endblock %}

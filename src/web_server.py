@@ -150,6 +150,24 @@ class VulcanSentinelWebServer:
             """Download a specific report"""
             return self._download_report(report_id)
         
+        @self.app.route('/setpoints')
+        def setpoints():
+            """Setpoints management page"""
+            return render_template('setpoints.html')
+        
+        @self.app.route('/api/setpoints')
+        def api_setpoints():
+            """Get all setpoints"""
+            return jsonify(self._get_all_setpoints())
+        
+        @self.app.route('/api/setpoints/<device_name>', methods=['GET', 'PUT'])
+        def api_setpoint(device_name):
+            """Get or update setpoint for a device"""
+            if request.method == 'GET':
+                return jsonify(self._get_setpoint(device_name))
+            elif request.method == 'PUT':
+                return jsonify(self._update_setpoint(device_name))
+        
         @self.app.route('/api/reports/csv/<report_id>')
         def api_export_csv(report_id):
             """Export report data to CSV"""
@@ -843,6 +861,68 @@ class VulcanSentinelWebServer:
         except Exception as e:
             logger.error(f"Error generating report: {e}")
             return {"error": str(e)}
+    
+    def _get_all_setpoints(self):
+        """Get all setpoints"""
+        try:
+            setpoints = self.db_manager.get_all_setpoints()
+            return {
+                'success': True,
+                'setpoints': setpoints
+            }
+        except Exception as e:
+            logger.error(f"Failed to get setpoints: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _get_setpoint(self, device_name):
+        """Get setpoint for a specific device"""
+        try:
+            setpoint = self.db_manager.get_setpoint(device_name)
+            if setpoint:
+                return {
+                    'success': True,
+                    'setpoint': setpoint
+                }
+            else:
+                return {
+                    'success': False,
+                    'error': f'No setpoint found for {device_name}'
+                }
+        except Exception as e:
+            logger.error(f"Failed to get setpoint for {device_name}: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
+    
+    def _update_setpoint(self, device_name):
+        """Update setpoint for a device"""
+        try:
+            data = request.get_json()
+            setpoint_value = data.get('setpoint_value')
+            deviation = data.get('deviation', 5.0)
+            
+            if setpoint_value is None:
+                return {
+                    'success': False,
+                    'error': 'setpoint_value is required'
+                }
+            
+            self.db_manager.store_setpoint(device_name, setpoint_value, deviation)
+            
+            return {
+                'success': True,
+                'message': f'Setpoint updated for {device_name}'
+            }
+        except Exception as e:
+            logger.error(f"Failed to update setpoint for {device_name}: {e}")
+            return {
+                'success': False,
+                'error': str(e)
+            }
     
     def _get_report_history(self, limit=50):
         """Get report history"""

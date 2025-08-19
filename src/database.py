@@ -72,6 +72,18 @@ class DatabaseManager:
                 )
             """)
             
+            # Create setpoints table for storing temperature setpoints
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS setpoints (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    device_name TEXT NOT NULL,
+                    setpoint_value REAL NOT NULL,
+                    deviation REAL DEFAULT 5.0,
+                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(device_name)
+                )
+            """)
+            
             # Create events table for system events
             cursor.execute("""
                 CREATE TABLE IF NOT EXISTS events (
@@ -477,6 +489,74 @@ class DatabaseManager:
             logger.error(f"Failed to cleanup old data: {e}")
             self.conn.rollback()
     
+    def store_setpoint(self, device_name: str, setpoint_value: float, deviation: float = 5.0):
+        """Store or update setpoint for a device"""
+        try:
+            cursor = self.conn.cursor()
+            
+            cursor.execute("""
+                INSERT OR REPLACE INTO setpoints (device_name, setpoint_value, deviation, timestamp)
+                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            """, (device_name, setpoint_value, deviation))
+            
+            self.conn.commit()
+            logger.debug(f"Stored setpoint for {device_name}: {setpoint_value}°F ±{deviation}°F")
+            
+        except Exception as e:
+            logger.error(f"Failed to store setpoint for {device_name}: {e}")
+            self.conn.rollback()
+            raise
+    
+    def get_setpoint(self, device_name: str) -> Optional[Dict[str, Any]]:
+        """Get the latest setpoint for a device"""
+        try:
+            cursor = self.conn.cursor()
+            
+            cursor.execute("""
+                SELECT setpoint_value, deviation, timestamp
+                FROM setpoints
+                WHERE device_name = ?
+            """, (device_name,))
+            
+            row = cursor.fetchone()
+            if row:
+                setpoint_value, deviation, timestamp = row
+                return {
+                    'setpoint_value': setpoint_value,
+                    'deviation': deviation,
+                    'timestamp': timestamp
+                }
+            return None
+            
+        except Exception as e:
+            logger.error(f"Failed to get setpoint for {device_name}: {e}")
+            return None
+    
+    def get_all_setpoints(self) -> Dict[str, Dict[str, Any]]:
+        """Get all setpoints for all devices"""
+        try:
+            cursor = self.conn.cursor()
+            
+            cursor.execute("""
+                SELECT device_name, setpoint_value, deviation, timestamp
+                FROM setpoints
+            """)
+            
+            setpoints = {}
+            for row in cursor.fetchall():
+                device_name, setpoint_value, deviation, timestamp = row
+                setpoints[device_name] = {
+                    'setpoint_value': setpoint_value,
+                    'deviation': deviation,
+                    'timestamp': timestamp
+                }
+            
+            return setpoints
+            
+        except Exception as e:
+            logger.error(f"Failed to get all setpoints: {e}")
+            return {}
+    
     def get_database_info(self) -> Dict[str, Any]:
         """Get database statistics and information"""
         try:
@@ -489,6 +569,9 @@ class DatabaseManager:
             cursor.execute("SELECT COUNT(*) FROM events")
             events_count = cursor.fetchone()[0]
             
+            cursor.execute("SELECT COUNT(*) FROM setpoints")
+            setpoints_count = cursor.fetchone()[0]
+            
             cursor.execute("SELECT COUNT(DISTINCT device_name) FROM readings")
             devices_count = cursor.fetchone()[0]
             
@@ -498,6 +581,7 @@ class DatabaseManager:
             return {
                 'readings_count': readings_count,
                 'events_count': events_count,
+                'setpoints_count': setpoints_count,
                 'devices_count': devices_count,
                 'file_size_mb': round(file_size / (1024 * 1024), 2),
                 'database_path': self.db_path

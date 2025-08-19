@@ -218,15 +218,25 @@ class ReportGenerator:
         }
         
     def _get_setpoints(self, sensor_name: str) -> Dict[str, float]:
-        """Get temperature setpoints for a sensor"""
-        # This would typically come from device configuration or database
-        # For now, using default values based on sensor type
-        setpoints = {
+        """Get temperature setpoints for a sensor from database"""
+        try:
+            # Try to get setpoint from database first
+            setpoint_data = self.db_manager.get_setpoint(sensor_name)
+            if setpoint_data:
+                return {
+                    'set_temp': setpoint_data['setpoint_value'],
+                    'deviation': setpoint_data['deviation']
+                }
+        except Exception as e:
+            logger.error(f"Failed to get setpoint from database for {sensor_name}: {e}")
+        
+        # Fallback to default values if database lookup fails
+        default_setpoints = {
             'preheat': {'set_temp': 300, 'deviation': 5},
             'main_heat': {'set_temp': 400, 'deviation': 5},
             'rib_heat': {'set_temp': 350, 'deviation': 5}
         }
-        return setpoints.get(sensor_name, {'set_temp': 0, 'deviation': 0})
+        return default_setpoints.get(sensor_name, {'set_temp': 0, 'deviation': 0})
         
     def _identify_heat_stages(self, readings: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
         """Identify different heat stages from temperature data"""

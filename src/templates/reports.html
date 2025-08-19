@@ -1,9 +1,8 @@
-<!DOCTYPE html>
-<html lang="en">
-<head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vulcan Sentinel - Report Generation</title>
+{% extends "base.html" %}
+
+{% block title %}Vulcan Sentinel - Report Generation{% endblock %}
+
+{% block extra_head %}
     <link rel="stylesheet" href="{{ url_for('static', filename='css/dashboard.css') }}">
     <style>
         .clock {
@@ -133,8 +132,9 @@
             100% { transform: rotate(360deg); }
         }
     </style>
-</head>
-<body>
+{% endblock %}
+
+{% block content %}
     <div class="clock">
         <div class="date" id="currentDate"></div>
         <div class="time" id="currentTime"></div>
@@ -143,10 +143,6 @@
     <div class="container">
         <header>
             <h1>Vulcan Sentinel - Report Generation</h1>
-            <nav>
-                <a href="/" class="nav-link">Dashboard</a>
-                <a href="/reports" class="nav-link active">Reports</a>
-            </nav>
         </header>
 
         <main>
@@ -370,5 +366,4 @@
         setDefaultTimes();
         loadReportHistory();
     </script>
-</body>
-</html>
+{% endblock %}
