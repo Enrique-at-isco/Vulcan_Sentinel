@@ -489,8 +489,9 @@ class ReportGenerator:
                 setpoint_data = self.db_manager.get_setpoint(sensor_name)
                 set_temp = setpoint_data.get('setpoint_value', 0) if setpoint_data else 0
                 
-                # Calculate dynamic deviation if we have time parameters
+                # Calculate dynamic deviation only during report generation (when time parameters are provided)
                 if start_time and end_time:
+                    logger.info(f"Calculating dynamic deviation for {sensor_name} during report generation")
                     dev = self._calculate_dynamic_setpoint_deviation(sensor_name, start_time, end_time)
                 else:
                     # Use deviation from database or fallback to 5.0 if None
@@ -514,6 +515,10 @@ class ReportGenerator:
         This method analyzes the temperature readings for a sensor during the specified time period
         and calculates the deviation based on how much the temperature varies from the setpoint
         once it reaches the setpoint temperature.
+        
+        The calculation range starts when temperature first equals the setpoint and continues until:
+        1. The end of the report time period, OR
+        2. The setpoint is decreased after the initial temperature=setpoint match
         
         Args:
             sensor_name: Name of the sensor (e.g., 'preheat', 'main_heat', 'rib_heat')
@@ -544,19 +549,59 @@ class ReportGenerator:
                 logger.warning(f"No temperature readings found for {sensor_name} during specified period")
                 return 5.0  # Default deviation
             
-            # Find readings where temperature is at or above setpoint
-            setpoint_readings = []
-            for reading in readings:
+            # Sort readings by timestamp to ensure chronological order
+            readings.sort(key=lambda x: x['timestamp'])
+            
+            # Find the first instance where temperature equals or exceeds setpoint
+            first_setpoint_match_index = None
+            initial_setpoint = setpoint_temp
+            
+            for i, reading in enumerate(readings):
                 temp_value = reading.get(sensor_name, 0)
                 if temp_value >= setpoint_temp:
-                    setpoint_readings.append(temp_value)
+                    first_setpoint_match_index = i
+                    break
             
-            if len(setpoint_readings) < 5:  # Need at least 5 readings for meaningful deviation
-                logger.info(f"Insufficient setpoint readings for {sensor_name} ({len(setpoint_readings)} readings)")
+            if first_setpoint_match_index is None:
+                logger.info(f"Temperature never reached setpoint for {sensor_name} during specified period")
+                return 5.0  # Default deviation
+            
+            # Get setpoint history to track changes during the period
+            setpoint_history = self.db_manager.get_setpoint_history(sensor_name, start_time, end_time)
+            
+            # Collect readings for deviation calculation
+            deviation_readings = []
+            current_setpoint = initial_setpoint
+            setpoint_decreased = False
+            
+            for i in range(first_setpoint_match_index, len(readings)):
+                reading = readings[i]
+                temp_value = reading.get(sensor_name, 0)
+                reading_timestamp = reading['timestamp']
+                
+                # Check if setpoint has been decreased after the first match
+                # Look for setpoint changes that occurred after the first temperature=setpoint match
+                for setpoint_change in setpoint_history:
+                    if setpoint_change['timestamp'] > readings[first_setpoint_match_index]['timestamp']:
+                        if setpoint_change['setpoint_value'] < current_setpoint:
+                            # Setpoint was decreased, stop deviation calculation
+                            setpoint_decreased = True
+                            logger.info(f"Setpoint decreased for {sensor_name} from {current_setpoint}°F to {setpoint_change['setpoint_value']}°F, stopping deviation calculation")
+                            break
+                        current_setpoint = setpoint_change['setpoint_value']
+                
+                if setpoint_decreased:
+                    break
+                
+                # Add this reading to deviation calculation
+                deviation_readings.append(temp_value)
+            
+            if len(deviation_readings) < 5:  # Need at least 5 readings for meaningful deviation
+                logger.info(f"Insufficient deviation readings for {sensor_name} ({len(deviation_readings)} readings)")
                 return 5.0  # Default deviation
             
             # Calculate deviation based on temperature variation from setpoint
-            deviations = [abs(temp - setpoint_temp) for temp in setpoint_readings]
+            deviations = [abs(temp - current_setpoint) for temp in deviation_readings]
             
             # Use 95th percentile of deviations to account for outliers
             deviations.sort()
@@ -569,8 +614,12 @@ class ReportGenerator:
             # Update the database with the calculated deviation
             self.db_manager.update_setpoint_deviation(sensor_name, calculated_deviation)
             
-            logger.info(f"Calculated and stored dynamic deviation for {sensor_name}: {calculated_deviation:.1f}°F "
-                       f"(based on {len(setpoint_readings)} setpoint readings)")
+            if setpoint_decreased:
+                logger.info(f"Calculated and stored dynamic deviation for {sensor_name}: {calculated_deviation:.1f}°F "
+                           f"(based on {len(deviation_readings)} readings, stopped due to setpoint decrease)")
+            else:
+                logger.info(f"Calculated and stored dynamic deviation for {sensor_name}: {calculated_deviation:.1f}°F "
+                           f"(based on {len(deviation_readings)} readings from first setpoint match to end of period)")
             
             return round(calculated_deviation, 1)
             

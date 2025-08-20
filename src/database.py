@@ -599,6 +599,47 @@ class DatabaseManager:
             self.conn.rollback()
             return False
     
+    def get_setpoint_history(self, device_name: str, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
+        """
+        Get setpoint history for a device during a time period.
+        
+        Args:
+            device_name: Name of the device (e.g., 'preheat', 'main_heat', 'rib_heat')
+            start_time: Start time of the period
+            end_time: End time of the period
+            
+        Returns:
+            List of dictionaries containing setpoint changes with timestamps
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            # Convert datetime objects to string format for comparison
+            start_datetime_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
+            end_datetime_str = end_time.strftime('%Y-%m-%d %H:%M:%S')
+            
+            cursor.execute("""
+                SELECT setpoint_value, timestamp
+                FROM setpoints
+                WHERE device_name = ? AND timestamp BETWEEN ? AND ?
+                ORDER BY timestamp
+            """, (device_name, start_datetime_str, end_datetime_str))
+            
+            setpoint_history = []
+            for row in cursor.fetchall():
+                setpoint_value, timestamp = row
+                setpoint_history.append({
+                    'setpoint_value': setpoint_value,
+                    'timestamp': timestamp
+                })
+            
+            logger.debug(f"Retrieved {len(setpoint_history)} setpoint changes for {device_name} between {start_time} and {end_time}")
+            return setpoint_history
+            
+        except Exception as e:
+            logger.error(f"Failed to get setpoint history for {device_name}: {e}")
+            return []
+    
     def get_database_info(self) -> Dict[str, Any]:
         """Get database statistics and information"""
         try:
