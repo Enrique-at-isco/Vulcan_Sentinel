@@ -485,8 +485,10 @@ class ReportGenerator:
                 if start_time and end_time:
                     dev = self._calculate_dynamic_setpoint_deviation(sensor_name, start_time, end_time)
                 else:
-                    # Use default deviation from database or fallback to 5.0
+                    # Use deviation from database or fallback to 5.0 if None
                     dev = setpoint_data.get('deviation', 5.0) if setpoint_data else 5.0
+                    if dev is None:
+                        dev = 5.0  # Default fallback
                 
                 table_data.append([
                     sensor_name.replace('_', ' ').title(),
@@ -556,7 +558,10 @@ class ReportGenerator:
             # Ensure deviation is within reasonable bounds (1-20°F)
             calculated_deviation = max(1.0, min(20.0, calculated_deviation))
             
-            logger.info(f"Calculated dynamic deviation for {sensor_name}: {calculated_deviation:.1f}°F "
+            # Update the database with the calculated deviation
+            self.db_manager.update_setpoint_deviation(sensor_name, calculated_deviation)
+            
+            logger.info(f"Calculated and stored dynamic deviation for {sensor_name}: {calculated_deviation:.1f}°F "
                        f"(based on {len(setpoint_readings)} setpoint readings)")
             
             return round(calculated_deviation, 1)

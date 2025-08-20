@@ -119,9 +119,9 @@ class DatabaseManager:
             cursor.execute("SELECT COUNT(*) FROM setpoints")
             if cursor.fetchone()[0] == 0:
                 logger.info("Initializing default setpoints")
-                self.store_setpoint("preheat", 150.0, 5.0)
-                self.store_setpoint("main_heat", 200.0, 5.0)
-                self.store_setpoint("rib_heat", 175.0, 5.0)
+                self.store_setpoint("preheat", 150.0, None)  # Deviation will be calculated dynamically
+                self.store_setpoint("main_heat", 200.0, None)  # Deviation will be calculated dynamically
+                self.store_setpoint("rib_heat", 175.0, None)  # Deviation will be calculated dynamically
             else:
                 logger.info("Setpoints table already has data")
             
@@ -499,18 +499,26 @@ class DatabaseManager:
             logger.error(f"Failed to cleanup old data: {e}")
             self.conn.rollback()
     
-    def store_setpoint(self, device_name: str, setpoint_value: float, deviation: float = 5.0):
+    def store_setpoint(self, device_name: str, setpoint_value: float, deviation: float = None):
         """Store or update setpoint for a device"""
         try:
             cursor = self.conn.cursor()
             
-            cursor.execute("""
-                INSERT OR REPLACE INTO setpoints (device_name, setpoint_value, deviation, timestamp)
-                VALUES (?, ?, ?, CURRENT_TIMESTAMP)
-            """, (device_name, setpoint_value, deviation))
+            # If deviation is None, don't update the existing deviation value
+            if deviation is None:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO setpoints (device_name, setpoint_value, timestamp)
+                    VALUES (?, ?, CURRENT_TIMESTAMP)
+                """, (device_name, setpoint_value))
+                logger.debug(f"Stored setpoint for {device_name}: {setpoint_value}°F (deviation unchanged)")
+            else:
+                cursor.execute("""
+                    INSERT OR REPLACE INTO setpoints (device_name, setpoint_value, deviation, timestamp)
+                    VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+                """, (device_name, setpoint_value, deviation))
+                logger.debug(f"Stored setpoint for {device_name}: {setpoint_value}°F ±{deviation}°F")
             
             self.conn.commit()
-            logger.debug(f"Stored setpoint for {device_name}: {setpoint_value}°F ±{deviation}°F")
             
         except Exception as e:
             logger.error(f"Failed to store setpoint for {device_name}: {e}")
@@ -566,6 +574,30 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get all setpoints: {e}")
             return {}
+    
+    def update_setpoint_deviation(self, device_name: str, deviation: float):
+        """Update the deviation for an existing setpoint"""
+        try:
+            cursor = self.conn.cursor()
+            
+            cursor.execute("""
+                UPDATE setpoints 
+                SET deviation = ?, timestamp = CURRENT_TIMESTAMP
+                WHERE device_name = ?
+            """, (deviation, device_name))
+            
+            if cursor.rowcount > 0:
+                self.conn.commit()
+                logger.debug(f"Updated deviation for {device_name}: ±{deviation}°F")
+                return True
+            else:
+                logger.warning(f"No setpoint found for {device_name} to update deviation")
+                return False
+                
+        except Exception as e:
+            logger.error(f"Failed to update deviation for {device_name}: {e}")
+            self.conn.rollback()
+            return False
     
     def get_database_info(self) -> Dict[str, Any]:
         """Get database statistics and information"""

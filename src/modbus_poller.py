@@ -265,8 +265,8 @@ class ModbusPoller:
                     setpoint_value = self._read_setpoint_register(device, device.setpoint_register)
                     if setpoint_value is not None:
                         logger.info(f"Successfully read setpoint for {device.name}: {setpoint_value}°F")
-                        # Store setpoint in database with default deviation of 5.0°F
-                        self.db_manager.store_setpoint(device.name, setpoint_value, 5.0)
+                        # Store setpoint in database without deviation (will be calculated dynamically)
+                        self.db_manager.store_setpoint(device.name, setpoint_value, None)
                     else:
                         logger.warning(f"Failed to read setpoint for {device.name}")
                 else:
