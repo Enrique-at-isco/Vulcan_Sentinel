@@ -478,6 +478,11 @@ class ReportGenerator:
                 setpoints = sensor_data['setpoints']
                 dev = setpoints.get('deviation', 0)
                 
+                # Calculate dynamic deviation only during report generation (when time parameters are provided)
+                if start_time and end_time:
+                    logger.info(f"Calculating dynamic deviation for {sensor_name} during report generation")
+                    dev = self._calculate_dynamic_setpoint_deviation(sensor_name, start_time, end_time)
+                
                 table_data.append([
                     sensor_name.replace('_', ' ').title(),
                     f"{setpoints.get('set_temp', 0)}",
@@ -489,15 +494,10 @@ class ReportGenerator:
                 setpoint_data = self.db_manager.get_setpoint(sensor_name)
                 set_temp = setpoint_data.get('setpoint_value', 0) if setpoint_data else 0
                 
-                # Calculate dynamic deviation only during report generation (when time parameters are provided)
-                if start_time and end_time:
-                    logger.info(f"Calculating dynamic deviation for {sensor_name} during report generation")
-                    dev = self._calculate_dynamic_setpoint_deviation(sensor_name, start_time, end_time)
-                else:
-                    # Use deviation from database or fallback to 5.0 if None
-                    dev = setpoint_data.get('deviation', 5.0) if setpoint_data else 5.0
-                    if dev is None:
-                        dev = 5.0  # Default fallback
+                # Use deviation from database or fallback to 5.0 if None
+                dev = setpoint_data.get('deviation', 5.0) if setpoint_data else 5.0
+                if dev is None:
+                    dev = 5.0  # Default fallback
                 
                 table_data.append([
                     sensor_name.replace('_', ' ').title(),
