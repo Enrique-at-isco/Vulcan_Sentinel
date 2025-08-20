@@ -288,7 +288,11 @@ class ReportGenerator:
             trigger_events = []
             
             for event in events:
+                # Convert database timestamp to timezone-aware datetime
                 event_time = datetime.fromisoformat(event['timestamp'])
+                # Make it timezone-aware by localizing to CST
+                event_time = self.cst_tz.localize(event_time)
+                
                 if start_time <= event_time <= end_time:
                     if 'trigger' in event['event_type'].lower() or 'stage' in event['event_type'].lower():
                         trigger_events.append({
@@ -309,7 +313,11 @@ class ReportGenerator:
             overrides = []
             
             for event in events:
+                # Convert database timestamp to timezone-aware datetime
                 event_time = datetime.fromisoformat(event['timestamp'])
+                # Make it timezone-aware by localizing to CST
+                event_time = self.cst_tz.localize(event_time)
+                
                 if start_time <= event_time <= end_time:
                     if 'override' in event['event_type'].lower() or 'manual' in event['event_type'].lower():
                         overrides.append({
