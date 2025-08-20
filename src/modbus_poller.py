@@ -196,11 +196,11 @@ class ModbusPoller:
         if not result.isError():
             logger.debug(f"Raw setpoint registers from {device.name}: {result.registers}")
             try:
-                # Use BIG word order for setpoint registers (different from temperature)
+                # Use same word order as temperature readings
                 decoder = BinaryPayloadDecoder.fromRegisters(
                     result.registers,
                     byteorder=Endian.BIG,
-                    wordorder=Endian.BIG
+                    wordorder=Endian.LITTLE
                 )
                 logger.debug(f"Created setpoint decoder for {device.name}")
                 
