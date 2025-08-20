@@ -181,6 +181,51 @@ class ModbusPoller:
             logger.warning(f"Error reading register {register_name} from {device.name}")
             return None
     
+    def _read_setpoint_register(self, device: ModbusDevice, register_address: int) -> Optional[float]:
+        """Read setpoint register with correct decoding for setpoint values"""
+        # Check connection first
+        if not device.client or not device.client.is_socket_open():
+            if not self._connect_device(device):
+                return None
+        
+        # Read setpoint register
+        result = device.client.read_input_registers(register_address, 2, slave=1)
+        if not result.isError():
+            logger.debug(f"Raw setpoint registers from {device.name}: {result.registers}")
+            try:
+                # Use BIG word order for setpoint registers (different from temperature)
+                decoder = BinaryPayloadDecoder.fromRegisters(
+                    result.registers,
+                    byteorder=Endian.BIG,
+                    wordorder=Endian.BIG
+                )
+                logger.debug(f"Created setpoint decoder for {device.name}")
+                
+                setpoint = decoder.decode_32bit_float()
+                logger.debug(f"Decoded setpoint from {device.name}: {setpoint} (type: {type(setpoint)})")
+                
+                # Ensure we return a float value
+                if setpoint is not None:
+                    try:
+                        float_setpoint = float(setpoint)
+                        # Round to whole number
+                        rounded_setpoint = round(float_setpoint)
+                        logger.debug(f"Converted setpoint to float: {float_setpoint}, rounded to: {rounded_setpoint}")
+                        return rounded_setpoint
+                    except (ValueError, TypeError) as e:
+                        logger.error(f"Failed to convert setpoint to float: {setpoint}, error: {e}")
+                        return None
+                else:
+                    logger.warning(f"Decoded setpoint is None for {device.name}")
+                    return None
+            except Exception as e:
+                logger.error(f"Error in setpoint decoding for {device.name}: {e}")
+                logger.error(f"Exception type: {type(e).__name__}")
+                return None
+        else:
+            logger.warning(f"Error reading setpoint register from {device.name}")
+            return None
+    
     def _poll_device(self, device: ModbusDevice):
         """Poll a single device continuously"""
         logger.info(f"Starting polling for {device.name}")
@@ -210,10 +255,10 @@ class ModbusPoller:
                 else:
                     logger.warning(f"No valid readings from {device.name}")
                 
-                # Read setpoint using the same method as temperature reading
+                # Read setpoint using correct decoding for setpoint registers
                 if device.setpoint_register:
                     logger.info(f"Reading setpoint for {device.name} at address {device.setpoint_register}")
-                    setpoint_value = self._read_register(device, 'setpoint', device.setpoint_register)
+                    setpoint_value = self._read_setpoint_register(device, device.setpoint_register)
                     if setpoint_value is not None:
                         logger.info(f"Successfully read setpoint for {device.name}: {setpoint_value}°F")
                         # Store setpoint in database with default deviation of 5.0°F
