@@ -96,7 +96,7 @@ class ModbusPoller:
                     port=device_config['port'],
                     slave_id=device_config['slave_id'],
                     registers=device_config['registers'],
-                    setpoint_register=device_config.get('setpoint_register'),
+                    setpoint_register=device_config['registers'].get('setpoint_register'),
                     polling_interval=device_config.get('polling_interval', 20)
                 )
                 self.devices[device_id] = device
@@ -139,6 +139,7 @@ class ModbusPoller:
     
     def _read_register(self, device: ModbusDevice, register_name: str, register_address: int) -> Optional[float]:
         """Read a single register from a device - using exact same method as working script"""
+        logger.info(f"=== ENTERING _read_register for {device.name} register {register_name} ===")
         # Check connection first
         if not device.client or not device.client.is_socket_open():
             if not self._connect_device(device):
@@ -166,6 +167,7 @@ class ModbusPoller:
                         # Round to whole number
                         rounded_temp = round(float_temp)
                         logger.debug(f"Converted temperature to float: {float_temp}, rounded to: {rounded_temp}")
+                        logger.info(f"=== EXITING _read_register for {device.name} with value {rounded_temp} ===")
                         return rounded_temp
                     except (ValueError, TypeError) as e:
                         logger.error(f"Failed to convert temperature to float: {temp}, error: {e}")
@@ -183,6 +185,7 @@ class ModbusPoller:
     
     def _read_setpoint_register(self, device: ModbusDevice, register_address: int) -> Optional[float]:
         """Read setpoint register with correct decoding for setpoint values"""
+        logger.info(f"=== ENTERING _read_setpoint_register for {device.name} ===")
         # Check connection first
         if not device.client or not device.client.is_socket_open():
             if not self._connect_device(device):
@@ -211,6 +214,7 @@ class ModbusPoller:
                         # Round to whole number
                         rounded_setpoint = round(float_setpoint)
                         logger.debug(f"Converted setpoint to float: {float_setpoint}, rounded to: {rounded_setpoint}")
+                        logger.info(f"=== EXITING _read_setpoint_register for {device.name} with value {rounded_setpoint} ===")
                         return rounded_setpoint
                     except (ValueError, TypeError) as e:
                         logger.error(f"Failed to convert setpoint to float: {setpoint}, error: {e}")
