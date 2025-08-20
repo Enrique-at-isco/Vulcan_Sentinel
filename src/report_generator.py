@@ -413,7 +413,7 @@ class ReportGenerator:
             },
             'key_process_data': {
                 'temperature_data': self._format_temperature_data(process_data),
-                'setpoints': self._format_setpoints_data(process_data),
+                'setpoints': self._format_setpoints_data(process_data, start_time, end_time),
                 'trigger_events': process_data.get('trigger_events', [])
             },
             'manual_overrides': process_data.get('manual_overrides', []),
@@ -456,8 +456,8 @@ class ReportGenerator:
                 
         return table_data
         
-    def _format_setpoints_data(self, process_data: Dict[str, Any]) -> List[List[str]]:
-        """Format setpoints data for table display"""
+    def _format_setpoints_data(self, process_data: Dict[str, Any], start_time: datetime = None, end_time: datetime = None) -> List[List[str]]:
+        """Format setpoints data for table display with dynamic deviation calculation"""
         table_data = [['Stage', 'Set Temp (°F)', '+Dev', '-Dev']]
         
         # Ensure all sensors are included in order
@@ -477,18 +477,93 @@ class ReportGenerator:
                     f"-{dev}"
                 ])
             else:
-                # Show default setpoints for sensors without data
-                default_setpoints = self._get_setpoints(sensor_name)
-                dev = default_setpoints.get('deviation', 0)
+                # Get current setpoint from database
+                setpoint_data = self.db_manager.get_setpoint(sensor_name)
+                set_temp = setpoint_data.get('setpoint_value', 0) if setpoint_data else 0
+                
+                # Calculate dynamic deviation if we have time parameters
+                if start_time and end_time:
+                    dev = self._calculate_dynamic_setpoint_deviation(sensor_name, start_time, end_time)
+                else:
+                    # Use default deviation from database or fallback to 5.0
+                    dev = setpoint_data.get('deviation', 5.0) if setpoint_data else 5.0
                 
                 table_data.append([
                     sensor_name.replace('_', ' ').title(),
-                    f"{default_setpoints.get('set_temp', 0)}",
+                    f"{set_temp}",
                     f"+{dev}",
                     f"-{dev}"
                 ])
                 
         return table_data
+        
+    def _calculate_dynamic_setpoint_deviation(self, sensor_name: str, start_time: datetime, end_time: datetime) -> float:
+        """
+        Calculate dynamic setpoint deviation based on sensor data when temperature reaches setpoint.
+        
+        This method analyzes the temperature readings for a sensor during the specified time period
+        and calculates the deviation based on how much the temperature varies from the setpoint
+        once it reaches the setpoint temperature.
+        
+        Args:
+            sensor_name: Name of the sensor (e.g., 'preheat', 'main_heat', 'rib_heat')
+            start_time: Start time of the analysis period
+            end_time: End time of the analysis period
+            
+        Returns:
+            Calculated deviation value in degrees Fahrenheit
+        """
+        try:
+            # Get the current setpoint for this sensor
+            setpoint_data = self.db_manager.get_setpoint(sensor_name)
+            if not setpoint_data:
+                logger.warning(f"No setpoint data found for {sensor_name}, using default deviation")
+                return 5.0  # Default deviation
+            
+            setpoint_temp = setpoint_data.get('setpoint_value', 0)
+            if setpoint_temp <= 0:
+                logger.warning(f"Invalid setpoint temperature for {sensor_name}: {setpoint_temp}")
+                return 5.0  # Default deviation
+            
+            # Query temperature readings for this sensor during the time period
+            readings = self.db_manager.get_readings_for_period(
+                sensor_name, start_time, end_time
+            )
+            
+            if not readings:
+                logger.warning(f"No temperature readings found for {sensor_name} during specified period")
+                return 5.0  # Default deviation
+            
+            # Find readings where temperature is at or above setpoint
+            setpoint_readings = []
+            for reading in readings:
+                temp_value = reading.get(sensor_name, 0)
+                if temp_value >= setpoint_temp:
+                    setpoint_readings.append(temp_value)
+            
+            if len(setpoint_readings) < 5:  # Need at least 5 readings for meaningful deviation
+                logger.info(f"Insufficient setpoint readings for {sensor_name} ({len(setpoint_readings)} readings)")
+                return 5.0  # Default deviation
+            
+            # Calculate deviation based on temperature variation from setpoint
+            deviations = [abs(temp - setpoint_temp) for temp in setpoint_readings]
+            
+            # Use 95th percentile of deviations to account for outliers
+            deviations.sort()
+            percentile_index = int(len(deviations) * 0.95)
+            calculated_deviation = deviations[percentile_index] if percentile_index < len(deviations) else deviations[-1]
+            
+            # Ensure deviation is within reasonable bounds (1-20°F)
+            calculated_deviation = max(1.0, min(20.0, calculated_deviation))
+            
+            logger.info(f"Calculated dynamic deviation for {sensor_name}: {calculated_deviation:.1f}°F "
+                       f"(based on {len(setpoint_readings)} setpoint readings)")
+            
+            return round(calculated_deviation, 1)
+            
+        except Exception as e:
+            logger.error(f"Error calculating dynamic setpoint deviation for {sensor_name}: {e}")
+            return 5.0  # Default deviation
         
     def _generate_pdf_report(self, report_content: Dict[str, Any], plot_path: str, report_id: str) -> str:
         """Generate PDF report"""
@@ -644,9 +719,12 @@ class ReportGenerator:
             story.append(Paragraph("Footer", styles['Heading2']))
             story.append(Spacer(1, 12))
             
+            # Get current date in CST
+            current_date = datetime.now(self.cst_tz).strftime('%Y-%m-%d')
+            
             footer_data = [
                 ['Operator Signature:', ''],
-                ['Date:', ''],
+                ['Date:', current_date],
                 ['Digital Report ID:', report_content['footer']['report_id']]
             ]
             
@@ -738,8 +816,11 @@ class ReportGenerator:
                 # Footer
                 f.write("FOOTER:\n")
                 f.write("-" * 7 + "\n")
+                # Get current date in CST
+                current_date = datetime.now(self.cst_tz).strftime('%Y-%m-%d')
+                
                 f.write("Operator Signature: _________________\n")
-                f.write("Date: _________________\n")
+                f.write(f"Date: {current_date}\n")
                 f.write(f"Digital Report ID: {report_content['footer']['report_id']}\n")
                 f.write("\n")
                 f.write("=" * 48 + "\n")

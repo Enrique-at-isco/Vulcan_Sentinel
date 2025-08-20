@@ -601,6 +601,75 @@ class DatabaseManager:
             logger.error(f"Failed to get database info: {e}")
             return {}
     
+    def get_readings_for_period(self, device_name: str, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
+        """
+        Get temperature readings for a specific device during a time period.
+        
+        Args:
+            device_name: Name of the device (e.g., 'preheat', 'main_heat', 'rib_heat')
+            start_time: Start time of the period
+            end_time: End time of the period
+            
+        Returns:
+            List of dictionaries containing temperature readings
+        """
+        try:
+            cursor = self.conn.cursor()
+            
+            # Convert datetime objects to string format for database query
+            start_date = start_time.strftime('%Y-%m-%d')
+            start_timestamp = start_time.strftime('%H:%M:%S')
+            end_date = end_time.strftime('%Y-%m-%d')
+            end_timestamp = end_time.strftime('%H:%M:%S')
+            
+            # Query readings within the time period
+            if start_date == end_date:
+                # Same day query
+                cursor.execute("""
+                    SELECT date, timestamp, preheat, main_heat, rib_heat
+                    FROM readings
+                    WHERE date = ? AND timestamp BETWEEN ? AND ?
+                    ORDER BY date, timestamp
+                """, (start_date, start_timestamp, end_timestamp))
+            else:
+                # Cross-day query
+                cursor.execute("""
+                    SELECT date, timestamp, preheat, main_heat, rib_heat
+                    FROM readings
+                    WHERE (date = ? AND timestamp >= ?) OR 
+                          (date > ? AND date < ?) OR
+                          (date = ? AND timestamp <= ?)
+                    ORDER BY date, timestamp
+                """, (start_date, start_timestamp, start_date, end_date, end_date, end_timestamp))
+            
+            readings = []
+            for row in cursor.fetchall():
+                date_str, time_str, preheat, main_heat, rib_heat = row
+                
+                # Extract temperature for the specific device
+                temperature = None
+                if device_name == 'preheat':
+                    temperature = preheat
+                elif device_name == 'main_heat':
+                    temperature = main_heat
+                elif device_name == 'rib_heat':
+                    temperature = rib_heat
+                
+                if temperature is not None:
+                    readings.append({
+                        device_name: temperature,
+                        'timestamp': f"{date_str} {time_str}",
+                        'date': date_str,
+                        'time': time_str
+                    })
+            
+            logger.debug(f"Retrieved {len(readings)} readings for {device_name} between {start_time} and {end_time}")
+            return readings
+            
+        except Exception as e:
+            logger.error(f"Failed to get readings for period for {device_name}: {e}")
+            return []
+    
     def close(self):
         """Close database connection"""
         try:
