@@ -210,22 +210,18 @@ class ModbusPoller:
                 else:
                     logger.warning(f"No valid readings from {device.name}")
                 
-                # Read and store setpoints (do this less frequently than temperature readings)
-                # Only read setpoints every 10th cycle or every 200 seconds
-                if not hasattr(device, '_setpoint_counter'):
-                    device._setpoint_counter = 0
-                
-                device._setpoint_counter += 1
-                logger.debug(f"Setpoint counter for {device.name}: {device._setpoint_counter}/10")
-                
-                # Force setpoint reading on every cycle for debugging
-                logger.info(f"Attempting setpoint read for {device.name} (forced)")
-                self._read_and_store_setpoints(device)
-                
-                if device._setpoint_counter >= 10:  # Read setpoints every 10 cycles
-                    device._setpoint_counter = 0
-                    logger.info(f"Triggering setpoint read for {device.name}")
-                    self._read_and_store_setpoints(device)
+                # Read setpoint using the same method as temperature reading
+                if device.setpoint_register:
+                    logger.info(f"Reading setpoint for {device.name} at address {device.setpoint_register}")
+                    setpoint_value = self._read_register(device, 'setpoint', device.setpoint_register)
+                    if setpoint_value is not None:
+                        logger.info(f"Successfully read setpoint for {device.name}: {setpoint_value}°F")
+                        # Store setpoint in database with default deviation of 5.0°F
+                        self.db_manager.store_setpoint(device.name, setpoint_value, 5.0)
+                    else:
+                        logger.warning(f"Failed to read setpoint for {device.name}")
+                else:
+                    logger.debug(f"No setpoint register configured for {device.name}")
                 
                 # Wait for next polling interval
                 time.sleep(device.polling_interval)
@@ -236,65 +232,7 @@ class ModbusPoller:
                 logger.error(f"Exception details: {str(e)}")
                 time.sleep(device.polling_interval)
     
-    def _read_and_store_setpoints(self, device: ModbusDevice):
-        """Read and store setpoints for a device"""
-        try:
-            logger.info(f"Attempting to read setpoint for {device.name}")
-            
-            # Check if device has setpoint register configured
-            if not device.setpoint_register:
-                logger.warning(f"No setpoint register configured for {device.name}")
-                return
-            
-            logger.info(f"Setpoint register configured for {device.name}: {device.setpoint_register}")
-            
-            # Check if device is connected
-            if not device.client or not device.client.is_socket_open():
-                logger.warning(f"Device {device.name} not connected, attempting to connect...")
-                if not self._connect_device(device):
-                    logger.warning(f"Cannot read setpoint from {device.name} - device not connected")
-                    return
-            
-            # Read setpoint register (Parameter ID 7007, CIP Instance ID 1, CIP Attribute ID 7)
-            # Based on the registry info, this is the "Active Closed-Loop Set Point"
-            setpoint_address = device.setpoint_register
-            logger.info(f"Reading setpoint from {device.name} at address {setpoint_address}")
-            
-            # Read 2 registers starting at the setpoint address
-            # Use input registers like temperature reading since that's working
-            result = device.client.read_input_registers(setpoint_address, 2, slave=device.slave_id)
-            
-            if result.isError():
-                logger.warning(f"Error reading setpoint from {device.name}: {result}")
-                return
-            
-            logger.info(f"Raw setpoint registers from {device.name}: {result.registers}")
-            
-            # Decode the setpoint value (IEEE Float)
-            decoder = BinaryPayloadDecoder.fromRegisters(
-                result.registers,
-                byteorder=Endian.BIG,
-                wordorder=Endian.LITTLE
-            )
-            
-            setpoint_value = decoder.decode_32bit_float()
-            logger.info(f"Decoded setpoint value from {device.name}: {setpoint_value}")
-            
-            if setpoint_value is not None:
-                try:
-                    float_setpoint = float(setpoint_value)
-                    # Store setpoint in database with default deviation of 5.0°F
-                    self.db_manager.store_setpoint(device.name, float_setpoint, 5.0)
-                    logger.info(f"Successfully stored setpoint for {device.name}: {float_setpoint}°F")
-                except (ValueError, TypeError) as e:
-                    logger.error(f"Failed to convert setpoint to float: {setpoint_value}, error: {e}")
-            else:
-                logger.warning(f"Decoded setpoint is None for {device.name}")
-                
-        except Exception as e:
-            logger.error(f"Error reading setpoints for {device.name}: {e}")
-            logger.error(f"Exception type: {type(e).__name__}")
-            logger.error(f"Exception details: {str(e)}")
+
     
     def _log_to_csv(self, device_name: str, timestamp: datetime, readings: Dict[str, float]):
         """Log readings to CSV file"""
