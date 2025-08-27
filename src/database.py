@@ -32,10 +32,20 @@ class DatabaseManager:
         os.makedirs(os.path.dirname(self.db_path), exist_ok=True)
     
     def _init_connection(self):
-        """Initialize database connection"""
+        """Initialize database connection with connection pooling"""
         try:
             self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
             self.conn.row_factory = sqlite3.Row  # Enable dict-like access
+            
+            # Enable WAL mode for better concurrency
+            self.conn.execute("PRAGMA journal_mode=WAL")
+            
+            # Set timeout for busy database
+            self.conn.execute("PRAGMA busy_timeout=30000")
+            
+            # Enable foreign keys
+            self.conn.execute("PRAGMA foreign_keys=ON")
+            
             logger.info(f"Connected to database: {self.db_path}")
         except Exception as e:
             logger.error(f"Failed to connect to database: {e}")

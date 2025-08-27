@@ -21,8 +21,35 @@ from io import StringIO, BytesIO
 import pytz
 import shutil
 import psutil
+import time
+from functools import wraps
 
 logger = logging.getLogger(__name__)
+
+# Simple cache for API responses
+_api_cache = {}
+_cache_timeout = 30  # seconds
+
+def cache_response(timeout=30):
+    """Decorator to cache API responses"""
+    def decorator(f):
+        @wraps(f)
+        def decorated_function(*args, **kwargs):
+            cache_key = f.__name__ + str(args) + str(sorted(kwargs.items()))
+            current_time = time.time()
+            
+            # Check if we have a cached response that's still valid
+            if cache_key in _api_cache:
+                cached_time, cached_response = _api_cache[cache_key]
+                if current_time - cached_time < timeout:
+                    return cached_response
+            
+            # Get fresh response and cache it
+            response = f(*args, **kwargs)
+            _api_cache[cache_key] = (current_time, response)
+            return response
+        return decorated_function
+    return decorator
 
 class VulcanSentinelWebServer:
     """Flask web server for Vulcan Sentinel"""
@@ -67,17 +94,20 @@ class VulcanSentinelWebServer:
             return jsonify(self._get_system_status())
         
         @self.app.route('/api/readings')
+        @cache_response(timeout=15)  # Cache for 15 seconds
         def api_readings():
             """Get latest readings"""
             return jsonify(self._get_latest_readings())
         
         @self.app.route('/api/readings/history')
+        @cache_response(timeout=60)  # Cache for 1 minute
         def api_history():
             """Get historical data"""
             days = request.args.get('days', 1, type=int)
             return jsonify(self._get_historical_data(days))
         
         @self.app.route('/api/devices')
+        @cache_response(timeout=300)  # Cache for 5 minutes
         def api_devices():
             """Get device information"""
             return jsonify(self._get_device_info())
@@ -220,14 +250,24 @@ class VulcanSentinelWebServer:
             return str(timestamp_str) if timestamp_str else 'N/A'
     
     def _get_latest_readings(self):
-        """Get latest temperature readings from new schema"""
+        """Get latest temperature readings from new schema - optimized to reduce queries"""
         try:
             conn = sqlite3.connect(self.db_path)
             cursor = conn.cursor()
             
-            # Get the most recent reading for each sensor type
+            # Get setpoints for all devices once
+            setpoints = self.db_manager.get_all_setpoints()
+            
+            # Get the most recent reading for each sensor type in one query
             cursor.execute("""
-                SELECT date, timestamp, preheat, main_heat, rib_heat
+                SELECT 
+                    date, timestamp, preheat, main_heat, rib_heat,
+                    (SELECT date FROM readings WHERE preheat IS NOT NULL ORDER BY date DESC, timestamp DESC LIMIT 1) as preheat_date,
+                    (SELECT timestamp FROM readings WHERE preheat IS NOT NULL ORDER BY date DESC, timestamp DESC LIMIT 1) as preheat_time,
+                    (SELECT preheat FROM readings WHERE preheat IS NOT NULL ORDER BY date DESC, timestamp DESC LIMIT 1) as preheat_latest,
+                    (SELECT date FROM readings WHERE main_heat IS NOT NULL ORDER BY date DESC, timestamp DESC LIMIT 1) as main_heat_date,
+                    (SELECT timestamp FROM readings WHERE main_heat IS NOT NULL ORDER BY date DESC, timestamp DESC LIMIT 1) as main_heat_time,
+                    (SELECT main_heat FROM readings WHERE main_heat IS NOT NULL ORDER BY date DESC, timestamp DESC LIMIT 1) as main_heat_latest
                 FROM readings 
                 ORDER BY date DESC, timestamp DESC 
                 LIMIT 1
@@ -238,7 +278,7 @@ class VulcanSentinelWebServer:
                 conn.close()
                 return {}
             
-            date_str, time_str, preheat, main_heat, rib_heat = row
+            date_str, time_str, preheat, main_heat, rib_heat, p_date, p_time, p_temp, m_date, m_time, m_temp = row
             
             # Check if reading is recent (within last 5 minutes)
             current_time = datetime.now(self.cst_tz)
@@ -250,11 +290,7 @@ class VulcanSentinelWebServer:
             
             readings = {}
             
-            # Get setpoints for all devices
-            setpoints = self.db_manager.get_all_setpoints()
-            
-            # Always include all three sensors
-            # Preheat
+            # Process preheat data
             if preheat is not None:
                 readings['preheat'] = {
                     'temperature': preheat,
@@ -262,35 +298,25 @@ class VulcanSentinelWebServer:
                     'connected': connected,
                     'setpoint': setpoints.get('preheat', {}).get('setpoint_value', 'N/A')
                 }
+            elif p_temp is not None:
+                p_reading_time = datetime.strptime(f"{p_date} {p_time}", '%Y-%m-%d %H:%M:%S')
+                p_reading_time = self.cst_tz.localize(p_reading_time)
+                p_connected = (current_time - p_reading_time) < timedelta(minutes=5)
+                readings['preheat'] = {
+                    'temperature': p_temp,
+                    'timestamp': f"{p_date} {p_time}",
+                    'connected': p_connected,
+                    'setpoint': setpoints.get('preheat', {}).get('setpoint_value', 'N/A')
+                }
             else:
-                # Check if we have any recent preheat data
-                cursor.execute("""
-                    SELECT date, timestamp, preheat FROM readings 
-                    WHERE preheat IS NOT NULL 
-                    ORDER BY date DESC, timestamp DESC 
-                    LIMIT 1
-                """)
-                preheat_row = cursor.fetchone()
-                if preheat_row:
-                    p_date, p_time, p_temp = preheat_row
-                    p_reading_time = datetime.strptime(f"{p_date} {p_time}", '%Y-%m-%d %H:%M:%S')
-                    p_reading_time = self.cst_tz.localize(p_reading_time)
-                    p_connected = (current_time - p_reading_time) < timedelta(minutes=5)
-                    readings['preheat'] = {
-                        'temperature': p_temp,
-                        'timestamp': f"{p_date} {p_time}",
-                        'connected': p_connected,
-                        'setpoint': setpoints.get('preheat', {}).get('setpoint_value', 'N/A')
-                    }
-                else:
-                    readings['preheat'] = {
-                        'temperature': 'N/A',
-                        'timestamp': 'N/A',
-                        'connected': False,
-                        'setpoint': setpoints.get('preheat', {}).get('setpoint_value', 'N/A')
-                    }
+                readings['preheat'] = {
+                    'temperature': 'N/A',
+                    'timestamp': 'N/A',
+                    'connected': False,
+                    'setpoint': setpoints.get('preheat', {}).get('setpoint_value', 'N/A')
+                }
             
-            # Main Heat
+            # Process main_heat data
             if main_heat is not None:
                 readings['main_heat'] = {
                     'temperature': main_heat,
@@ -298,35 +324,25 @@ class VulcanSentinelWebServer:
                     'connected': connected,
                     'setpoint': setpoints.get('main_heat', {}).get('setpoint_value', 'N/A')
                 }
+            elif m_temp is not None:
+                m_reading_time = datetime.strptime(f"{m_date} {m_time}", '%Y-%m-%d %H:%M:%S')
+                m_reading_time = self.cst_tz.localize(m_reading_time)
+                m_connected = (current_time - m_reading_time) < timedelta(minutes=5)
+                readings['main_heat'] = {
+                    'temperature': m_temp,
+                    'timestamp': f"{m_date} {m_time}",
+                    'connected': m_connected,
+                    'setpoint': setpoints.get('main_heat', {}).get('setpoint_value', 'N/A')
+                }
             else:
-                # Check if we have any recent main_heat data
-                cursor.execute("""
-                    SELECT date, timestamp, main_heat FROM readings 
-                    WHERE main_heat IS NOT NULL 
-                    ORDER BY date DESC, timestamp DESC 
-                    LIMIT 1
-                """)
-                main_heat_row = cursor.fetchone()
-                if main_heat_row:
-                    m_date, m_time, m_temp = main_heat_row
-                    m_reading_time = datetime.strptime(f"{m_date} {m_time}", '%Y-%m-%d %H:%M:%S')
-                    m_reading_time = self.cst_tz.localize(m_reading_time)
-                    m_connected = (current_time - m_reading_time) < timedelta(minutes=5)
-                    readings['main_heat'] = {
-                        'temperature': m_temp,
-                        'timestamp': f"{m_date} {m_time}",
-                        'connected': m_connected,
-                        'setpoint': setpoints.get('main_heat', {}).get('setpoint_value', 'N/A')
-                    }
-                else:
-                    readings['main_heat'] = {
-                        'temperature': 'N/A',
-                        'timestamp': 'N/A',
-                        'connected': False,
-                        'setpoint': setpoints.get('main_heat', {}).get('setpoint_value', 'N/A')
-                    }
+                readings['main_heat'] = {
+                    'temperature': 'N/A',
+                    'timestamp': 'N/A',
+                    'connected': False,
+                    'setpoint': setpoints.get('main_heat', {}).get('setpoint_value', 'N/A')
+                }
             
-            # Rib Heat
+            # Process rib_heat data
             if rib_heat is not None:
                 readings['rib_heat'] = {
                     'temperature': rib_heat,
@@ -335,7 +351,6 @@ class VulcanSentinelWebServer:
                     'setpoint': setpoints.get('rib_heat', {}).get('setpoint_value', 'N/A')
                 }
             else:
-                # Show rib_heat as disconnected with N/A values
                 readings['rib_heat'] = {
                     'temperature': 'N/A',
                     'timestamp': 'N/A',

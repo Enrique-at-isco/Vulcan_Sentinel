@@ -8,6 +8,7 @@ data collection, and storage to both SQLite and CSV formats.
 import os
 import time
 import logging
+from logging.handlers import RotatingFileHandler
 import threading
 from datetime import datetime
 from typing import Dict, List, Optional
@@ -32,10 +33,10 @@ def setup_logging():
         os.makedirs('logs', exist_ok=True)
         
         logging.basicConfig(
-            level=logging.DEBUG,
+            level=logging.INFO,  # Changed from DEBUG to INFO
             format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
             handlers=[
-                logging.FileHandler('logs/modbus_poller.log'),
+                RotatingFileHandler('logs/modbus_poller.log', maxBytes=10*1024*1024, backupCount=5),
                 logging.StreamHandler()
             ]
         )
@@ -117,10 +118,18 @@ class ModbusPoller:
             raise
     
     def _connect_device(self, device: ModbusDevice) -> bool:
-        """Connect to a Modbus device"""
+        """Connect to a Modbus device with connection pooling"""
         try:
+            # Check if we already have a valid connection
             if device.client and device.client.is_socket_open():
                 return True
+            
+            # Close any existing connection before creating a new one
+            if device.client:
+                try:
+                    device.client.close()
+                except:
+                    pass
                 
             device.client = ModbusTcpClient(device.ip, port=device.port)
             if device.client.connect():
@@ -139,7 +148,6 @@ class ModbusPoller:
     
     def _read_register(self, device: ModbusDevice, register_name: str, register_address: int) -> Optional[float]:
         """Read a single register from a device - using exact same method as working script"""
-        logger.info(f"=== ENTERING _read_register for {device.name} register {register_name} ===")
         # Check connection first
         if not device.client or not device.client.is_socket_open():
             if not self._connect_device(device):
@@ -148,17 +156,14 @@ class ModbusPoller:
         # Use exact same method as the working single sensor script - NO exception handling around decoder
         result = device.client.read_input_registers(register_address, 2, slave=1)
         if not result.isError():
-            logger.debug(f"Raw registers from {device.name}: {result.registers}")
             try:
                 decoder = BinaryPayloadDecoder.fromRegisters(
                     result.registers,
                     byteorder=Endian.BIG,
                     wordorder=Endian.LITTLE
                 )
-                logger.debug(f"Created decoder for {device.name}")
                 
                 temp = decoder.decode_32bit_float()
-                logger.debug(f"Decoded temperature from {device.name}: {temp} (type: {type(temp)})")
                 
                 # Ensure we return a float value
                 if temp is not None:
@@ -166,8 +171,7 @@ class ModbusPoller:
                         float_temp = float(temp)
                         # Round to whole number
                         rounded_temp = round(float_temp)
-                        logger.debug(f"Converted temperature to float: {float_temp}, rounded to: {rounded_temp}")
-                        logger.info(f"=== EXITING _read_register for {device.name} with value {rounded_temp} ===")
+                        logger.debug(f"Read {device.name} {register_name}: {rounded_temp}°F")
                         return rounded_temp
                     except (ValueError, TypeError) as e:
                         logger.error(f"Failed to convert temperature to float: {temp}, error: {e}")
@@ -177,7 +181,6 @@ class ModbusPoller:
                     return None
             except Exception as e:
                 logger.error(f"Error in decoding for {device.name}: {e}")
-                logger.error(f"Exception type: {type(e).__name__}")
                 return None
         else:
             logger.warning(f"Error reading register {register_name} from {device.name}")
@@ -185,7 +188,6 @@ class ModbusPoller:
     
     def _read_setpoint_register(self, device: ModbusDevice, register_address: int) -> Optional[float]:
         """Read setpoint register with correct decoding for setpoint values"""
-        logger.info(f"=== ENTERING _read_setpoint_register for {device.name} ===")
         # Check connection first
         if not device.client or not device.client.is_socket_open():
             if not self._connect_device(device):
@@ -194,7 +196,6 @@ class ModbusPoller:
         # Read setpoint register
         result = device.client.read_input_registers(register_address, 2, slave=1)
         if not result.isError():
-            logger.debug(f"Raw setpoint registers from {device.name}: {result.registers}")
             try:
                 # Use same word order as temperature readings
                 decoder = BinaryPayloadDecoder.fromRegisters(
@@ -202,10 +203,8 @@ class ModbusPoller:
                     byteorder=Endian.BIG,
                     wordorder=Endian.LITTLE
                 )
-                logger.debug(f"Created setpoint decoder for {device.name}")
                 
                 setpoint = decoder.decode_32bit_float()
-                logger.debug(f"Decoded setpoint from {device.name}: {setpoint} (type: {type(setpoint)})")
                 
                 # Ensure we return a float value
                 if setpoint is not None:
@@ -213,8 +212,7 @@ class ModbusPoller:
                         float_setpoint = float(setpoint)
                         # Round to whole number
                         rounded_setpoint = round(float_setpoint)
-                        logger.debug(f"Converted setpoint to float: {float_setpoint}, rounded to: {rounded_setpoint}")
-                        logger.info(f"=== EXITING _read_setpoint_register for {device.name} with value {rounded_setpoint} ===")
+                        logger.debug(f"Read {device.name} setpoint: {rounded_setpoint}°F")
                         return rounded_setpoint
                     except (ValueError, TypeError) as e:
                         logger.error(f"Failed to convert setpoint to float: {setpoint}, error: {e}")
@@ -224,7 +222,6 @@ class ModbusPoller:
                     return None
             except Exception as e:
                 logger.error(f"Error in setpoint decoding for {device.name}: {e}")
-                logger.error(f"Exception type: {type(e).__name__}")
                 return None
         else:
             logger.warning(f"Error reading setpoint register from {device.name}")
@@ -261,10 +258,9 @@ class ModbusPoller:
                 
                 # Read setpoint using correct decoding for setpoint registers
                 if device.setpoint_register:
-                    logger.info(f"Reading setpoint for {device.name} at address {device.setpoint_register}")
                     setpoint_value = self._read_setpoint_register(device, device.setpoint_register)
                     if setpoint_value is not None:
-                        logger.info(f"Successfully read setpoint for {device.name}: {setpoint_value}°F")
+                        logger.debug(f"Setpoint for {device.name}: {setpoint_value}°F")
                         # Store setpoint in database without deviation (will be calculated dynamically)
                         self.db_manager.store_setpoint(device.name, setpoint_value, None)
                     else:
@@ -284,7 +280,7 @@ class ModbusPoller:
 
     
     def _log_to_csv(self, device_name: str, timestamp: datetime, readings: Dict[str, float]):
-        """Log readings to CSV file"""
+        """Log readings to CSV file with cleanup"""
         try:
             # Replace spaces with underscores for filename safety
             safe_device_name = device_name.replace(' ', '_')
@@ -307,9 +303,43 @@ class ModbusPoller:
                 # Write data row
                 row = [timestamp.strftime('%Y-%m-%d %H:%M:%S')] + list(readings.values())
                 writer.writerow(row)
+            
+            # Cleanup old CSV files (keep only last 30 days)
+            self._cleanup_old_csv_files(safe_device_name)
                 
         except Exception as e:
             logger.error(f"Failed to log to CSV for {device_name}: {e}")
+    
+    def _cleanup_old_csv_files(self, device_name: str):
+        """Clean up CSV files older than 30 days"""
+        try:
+            import os
+            import glob
+            from datetime import datetime, timedelta
+            
+            # Get all CSV files for this device
+            pattern = f"logs/{device_name}_*.csv"
+            csv_files = glob.glob(pattern)
+            
+            # Calculate cutoff date (30 days ago)
+            cutoff_date = datetime.now() - timedelta(days=30)
+            
+            for csv_file in csv_files:
+                try:
+                    # Extract date from filename
+                    filename = os.path.basename(csv_file)
+                    date_str = filename.split('_')[1].split('.')[0]  # Extract YYYYMMDD
+                    file_date = datetime.strptime(date_str, '%Y%m%d')
+                    
+                    # Delete if older than 30 days
+                    if file_date < cutoff_date:
+                        os.remove(csv_file)
+                        logger.debug(f"Cleaned up old CSV file: {csv_file}")
+                except Exception as e:
+                    logger.warning(f"Could not process CSV file {csv_file}: {e}")
+                    
+        except Exception as e:
+            logger.error(f"Error during CSV cleanup: {e}")
     
     def start(self):
         """Start polling all devices"""

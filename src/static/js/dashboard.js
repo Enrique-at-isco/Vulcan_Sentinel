@@ -96,14 +96,14 @@ document.addEventListener('DOMContentLoaded', function() {
     updateChartData();
     updateStorageInfo();
 
-    // Set up auto-refresh intervals
-    setInterval(updateChartData, 30000); // Every 30 seconds
-    setInterval(updateStorageInfo, 120000); // Every 2 minutes
+    // Set up auto-refresh intervals with longer intervals to reduce server load
+    setInterval(updateChartData, 60000); // Every 60 seconds (reduced from 30)
+    setInterval(updateStorageInfo, 300000); // Every 5 minutes (reduced from 2 minutes)
 
-    // Auto-refresh page every 5 minutes
+    // Auto-refresh page every 10 minutes instead of 5
     setTimeout(function() {
         location.reload();
-    }, 300000);
+    }, 600000);
 });
 
 // Function to update chart data
