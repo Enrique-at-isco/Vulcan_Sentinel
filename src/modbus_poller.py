@@ -193,18 +193,12 @@ class ModbusPoller:
             if not self._connect_device(device):
                 return None
         
-        # Read setpoint register
-        result = device.client.read_input_registers(register_address, 2, slave=1)
+        # Read setpoint register (only need 1 register for 16-bit integer)
+        result = device.client.read_input_registers(register_address, 1, slave=1)
         if not result.isError():
             try:
-                # Use same word order as temperature readings
-                decoder = BinaryPayloadDecoder.fromRegisters(
-                    result.registers,
-                    byteorder=Endian.BIG,
-                    wordorder=Endian.LITTLE
-                )
-                
-                setpoint = decoder.decode_32bit_float()
+                # Setpoint is stored as a 16-bit integer in the first register
+                setpoint = result.registers[0]
                 
                 # Ensure we return a float value
                 if setpoint is not None:
@@ -212,7 +206,7 @@ class ModbusPoller:
                         float_setpoint = float(setpoint)
                         # Round to whole number
                         rounded_setpoint = round(float_setpoint)
-                        logger.debug(f"Read {device.name} setpoint: {rounded_setpoint}°F")
+                        logger.debug(f"Read {device.name} setpoint: {rounded_setpoint}°F (raw: {setpoint})")
                         return rounded_setpoint
                     except (ValueError, TypeError) as e:
                         logger.error(f"Failed to convert setpoint to float: {setpoint}, error: {e}")
