@@ -320,15 +320,18 @@ class ModbusPoller:
             
             for csv_file in csv_files:
                 try:
-                    # Extract date from filename
+                    # Extract date from filename - handle device names with underscores
                     filename = os.path.basename(csv_file)
-                    date_str = filename.split('_')[1].split('.')[0]  # Extract YYYYMMDD
-                    file_date = datetime.strptime(date_str, '%Y%m%d')
-                    
-                    # Delete if older than 30 days
-                    if file_date < cutoff_date:
-                        os.remove(csv_file)
-                        logger.debug(f"Cleaned up old CSV file: {csv_file}")
+                    # Split by underscore and take the last part before .csv
+                    parts = filename.split('_')
+                    if len(parts) >= 2:
+                        date_str = parts[-1].split('.')[0]  # Extract YYYYMMDD from last part
+                        file_date = datetime.strptime(date_str, '%Y%m%d')
+                        
+                        # Delete if older than 30 days
+                        if file_date < cutoff_date:
+                            os.remove(csv_file)
+                            logger.debug(f"Cleaned up old CSV file: {csv_file}")
                 except Exception as e:
                     logger.warning(f"Could not process CSV file {csv_file}: {e}")
                     

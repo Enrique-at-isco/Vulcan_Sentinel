@@ -34,27 +34,38 @@ class DatabaseManager:
     def _init_connection(self):
         """Initialize database connection with connection pooling"""
         try:
-            self.conn = sqlite3.connect(self.db_path, check_same_thread=False)
-            self.conn.row_factory = sqlite3.Row  # Enable dict-like access
+            self.db_path = self.db_path
+            logger.info(f"Database path: {self.db_path}")
+        except Exception as e:
+            logger.error(f"Failed to initialize database path: {e}")
+            raise
+    
+    def _get_connection(self):
+        """Get a new database connection for thread safety"""
+        try:
+            conn = sqlite3.connect(self.db_path, check_same_thread=False)
+            conn.row_factory = sqlite3.Row  # Enable dict-like access
             
             # Enable WAL mode for better concurrency
-            self.conn.execute("PRAGMA journal_mode=WAL")
+            conn.execute("PRAGMA journal_mode=WAL")
             
             # Set timeout for busy database
-            self.conn.execute("PRAGMA busy_timeout=30000")
+            conn.execute("PRAGMA busy_timeout=30000")
             
             # Enable foreign keys
-            self.conn.execute("PRAGMA foreign_keys=ON")
+            conn.execute("PRAGMA foreign_keys=ON")
             
-            logger.info(f"Connected to database: {self.db_path}")
+            return conn
         except Exception as e:
             logger.error(f"Failed to connect to database: {e}")
             raise
     
     def create_tables(self):
         """Create all necessary database tables"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             # Create devices table
             cursor.execute("""
@@ -135,14 +146,24 @@ class DatabaseManager:
             else:
                 logger.info("Setpoints table already has data")
             
+            conn.commit()
+            logger.info("Database tables created successfully")
+            
         except Exception as e:
             logger.error(f"Failed to create database tables: {e}")
+            if conn:
+                conn.rollback()
             raise
+        finally:
+            if conn:
+                conn.close()
     
     def store_readings(self, device_name: str, timestamp: datetime, readings: Dict[str, float]):
         """Store readings for a device in the new format"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             # Convert timestamp to CST and extract date and time
             cst_timestamp = timestamp.astimezone(self.cst_tz)
@@ -199,13 +220,17 @@ class DatabaseManager:
                         VALUES (?, ?, NULL, NULL, ?)
                     """, (date_str, time_str, temperature_value))
             
-            self.conn.commit()
+            conn.commit()
             logger.debug(f"Stored readings for {device_name} at {date_str} {time_str}")
             
         except Exception as e:
             logger.error(f"Failed to store readings for {device_name}: {e}")
-            self.conn.rollback()
+            if conn:
+                conn.rollback()
             raise
+        finally:
+            if conn:
+                conn.close()
     
     def get_latest_readings(self, device_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get the latest readings for all devices or a specific device using new schema"""
@@ -511,8 +536,10 @@ class DatabaseManager:
     
     def store_setpoint(self, device_name: str, setpoint_value: float, deviation: float = None):
         """Store or update setpoint for a device"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             # If deviation is None, don't update the existing deviation value
             if deviation is None:
@@ -528,12 +555,16 @@ class DatabaseManager:
                 """, (device_name, setpoint_value, deviation))
                 logger.debug(f"Stored setpoint for {device_name}: {setpoint_value}°F ±{deviation}°F")
             
-            self.conn.commit()
+            conn.commit()
             
         except Exception as e:
             logger.error(f"Failed to store setpoint for {device_name}: {e}")
-            self.conn.rollback()
+            if conn:
+                conn.rollback()
             raise
+        finally:
+            if conn:
+                conn.close()
     
     def get_setpoint(self, device_name: str) -> Optional[Dict[str, Any]]:
         """Get the latest setpoint for a device"""
