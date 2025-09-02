@@ -15,6 +15,7 @@ from typing import Dict, List, Optional
 from dataclasses import dataclass
 import yaml
 import pytz
+import math
 
 from pymodbus.client import ModbusTcpClient
 from pymodbus.payload import BinaryPayloadDecoder
@@ -187,32 +188,40 @@ class ModbusPoller:
             return None
     
     def _read_setpoint_register(self, device: ModbusDevice, register_address: int) -> Optional[float]:
-        """Read setpoint register with correct decoding for setpoint values"""
+        """Read setpoint register with correct decoding for IEEE Float values"""
         # Check connection first
         if not device.client or not device.client.is_socket_open():
             if not self._connect_device(device):
                 return None
         
-        # Read setpoint register (only need 1 register for 16-bit integer)
-        result = device.client.read_input_registers(register_address, 1, slave=1)
+        # Read setpoint register (need 2 registers for IEEE Float - 32-bit)
+        result = device.client.read_input_registers(register_address, 2, slave=1)
         if not result.isError():
             try:
-                # Setpoint is stored as a 16-bit integer in the first register
-                setpoint = result.registers[0]
+                # Setpoint is stored as IEEE Float (32-bit) across 2 registers
+                # Use BinaryPayloadDecoder with correct byte order and word order
+                decoder = BinaryPayloadDecoder.fromRegisters(
+                    result.registers, 
+                    byteorder=Endian.BIG, 
+                    wordorder=Endian.LITTLE
+                )
                 
-                # Ensure we return a float value
-                if setpoint is not None:
+                # Decode as 32-bit float
+                setpoint = decoder.decode_32bit_float()
+                
+                # Ensure we return a valid float value
+                if setpoint is not None and not math.isnan(setpoint) and not math.isinf(setpoint):
                     try:
                         float_setpoint = float(setpoint)
-                        # Round to whole number
-                        rounded_setpoint = round(float_setpoint)
+                        # Round to 1 decimal place for setpoints
+                        rounded_setpoint = round(float_setpoint, 1)
                         logger.debug(f"Read {device.name} setpoint: {rounded_setpoint}°F (raw: {setpoint})")
                         return rounded_setpoint
                     except (ValueError, TypeError) as e:
                         logger.error(f"Failed to convert setpoint to float: {setpoint}, error: {e}")
                         return None
                 else:
-                    logger.warning(f"Decoded setpoint is None for {device.name}")
+                    logger.warning(f"Invalid setpoint value for {device.name}: {setpoint}")
                     return None
             except Exception as e:
                 logger.error(f"Error in setpoint decoding for {device.name}: {e}")
