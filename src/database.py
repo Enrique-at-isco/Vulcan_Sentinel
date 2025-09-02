@@ -133,7 +133,7 @@ class DatabaseManager:
                 ON events (timestamp)
             """)
             
-            self.conn.commit()
+            conn.commit()
             logger.info("Database tables created successfully")
             
             # Initialize default setpoints if table is empty
@@ -234,8 +234,10 @@ class DatabaseManager:
     
     def get_latest_readings(self, device_name: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get the latest readings for all devices or a specific device using new schema"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             if device_name:
                 # Get latest reading for specific device
@@ -334,11 +336,16 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get latest readings: {e}")
             return []
+        finally:
+            if conn:
+                conn.close()
     
     def get_readings_range(self, device_name: str, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
         """Get readings for a device within a time range using new schema"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             # Convert timezone-aware datetime objects to naive datetime objects for database comparison
             # since the database stores naive datetime strings
@@ -414,11 +421,16 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get readings range for {device_name}: {e}")
             return []
+        finally:
+            if conn:
+                conn.close()
     
     def get_statistics(self, device_name: str, hours: int = 24) -> Dict[str, Any]:
         """Get statistical data for a device over the specified hours"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             end_time = datetime.now(self.cst_tz)
             start_time = end_time - timedelta(hours=hours)
             
@@ -457,27 +469,37 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get statistics for {device_name}: {e}")
             return {}
+        finally:
+            if conn:
+                conn.close()
     
     def log_event(self, event_type: str, message: str, severity: str = "INFO", device_name: Optional[str] = None):
         """Log a system event"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             cursor.execute("""
                 INSERT INTO events (event_type, device_name, message, severity)
                 VALUES (?, ?, ?, ?)
             """, (event_type, device_name, message, severity))
             
-            self.conn.commit()
+            conn.commit()
             logger.debug(f"Logged event: {event_type} - {message}")
             
         except Exception as e:
             logger.error(f"Failed to log event: {e}")
+        finally:
+            if conn:
+                conn.close()
     
     def get_events(self, limit: int = 100, severity: Optional[str] = None) -> List[Dict[str, Any]]:
         """Get recent system events"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             if severity:
                 cursor.execute("""
@@ -502,11 +524,16 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get events: {e}")
             return []
+        finally:
+            if conn:
+                conn.close()
     
     def cleanup_old_data(self, days: int = 30):
         """Clean up old data to prevent database bloat"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             cutoff_date = datetime.now(self.cst_tz) - timedelta(days=days)
             
             # Delete old readings
@@ -526,13 +553,17 @@ class DatabaseManager:
             
             events_deleted = cursor.rowcount
             
-            self.conn.commit()
+            conn.commit()
             
             logger.info(f"Cleanup completed: {readings_deleted} readings, {events_deleted} events deleted")
             
         except Exception as e:
             logger.error(f"Failed to cleanup old data: {e}")
-            self.conn.rollback()
+            if conn:
+                conn.rollback()
+        finally:
+            if conn:
+                conn.close()
     
     def store_setpoint(self, device_name: str, setpoint_value: float, deviation: float = None):
         """Store or update setpoint for a device"""
@@ -568,8 +599,10 @@ class DatabaseManager:
     
     def get_setpoint(self, device_name: str) -> Optional[Dict[str, Any]]:
         """Get the latest setpoint for a device"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             cursor.execute("""
                 SELECT setpoint_value, deviation, timestamp
@@ -590,11 +623,16 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get setpoint for {device_name}: {e}")
             return None
+        finally:
+            if conn:
+                conn.close()
     
     def get_all_setpoints(self) -> Dict[str, Dict[str, Any]]:
         """Get all setpoints for all devices"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             cursor.execute("""
                 SELECT device_name, setpoint_value, deviation, timestamp
@@ -615,11 +653,16 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get all setpoints: {e}")
             return {}
+        finally:
+            if conn:
+                conn.close()
     
     def update_setpoint_deviation(self, device_name: str, deviation: float):
         """Update the deviation for an existing setpoint"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             cursor.execute("""
                 UPDATE setpoints 
@@ -628,7 +671,7 @@ class DatabaseManager:
             """, (deviation, device_name))
             
             if cursor.rowcount > 0:
-                self.conn.commit()
+                conn.commit()
                 logger.debug(f"Updated deviation for {device_name}: ±{deviation}°F")
                 return True
             else:
@@ -637,8 +680,12 @@ class DatabaseManager:
                 
         except Exception as e:
             logger.error(f"Failed to update deviation for {device_name}: {e}")
-            self.conn.rollback()
+            if conn:
+                conn.rollback()
             return False
+        finally:
+            if conn:
+                conn.close()
     
     def get_setpoint_history(self, device_name: str, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
         """
@@ -652,8 +699,10 @@ class DatabaseManager:
         Returns:
             List of dictionaries containing setpoint changes with timestamps
         """
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             # Convert datetime objects to string format for comparison
             start_datetime_str = start_time.strftime('%Y-%m-%d %H:%M:%S')
@@ -680,11 +729,16 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get setpoint history for {device_name}: {e}")
             return []
+        finally:
+            if conn:
+                conn.close()
     
     def get_database_info(self) -> Dict[str, Any]:
         """Get database statistics and information"""
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             # Get table sizes
             cursor.execute("SELECT COUNT(*) FROM readings")
@@ -714,6 +768,9 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get database info: {e}")
             return {}
+        finally:
+            if conn:
+                conn.close()
     
     def get_readings_for_period(self, device_name: str, start_time: datetime, end_time: datetime) -> List[Dict[str, Any]]:
         """
@@ -727,8 +784,10 @@ class DatabaseManager:
         Returns:
             List of dictionaries containing temperature readings
         """
+        conn = None
         try:
-            cursor = self.conn.cursor()
+            conn = self._get_connection()
+            cursor = conn.cursor()
             
             # Convert datetime objects to string format for database query
             start_date = start_time.strftime('%Y-%m-%d')
@@ -783,16 +842,10 @@ class DatabaseManager:
         except Exception as e:
             logger.error(f"Failed to get readings for period for {device_name}: {e}")
             return []
+        finally:
+            if conn:
+                conn.close()
     
     def close(self):
-        """Close database connection"""
-        try:
-            if hasattr(self, 'conn'):
-                self.conn.close()
-                logger.info("Database connection closed")
-        except Exception as e:
-            logger.error(f"Error closing database connection: {e}")
-    
-    def __del__(self):
-        """Destructor to ensure connection is closed"""
-        self.close() 
+        """Close database connection - not needed with connection pooling"""
+        pass 
