@@ -406,7 +406,7 @@ class ReportGenerator:
                              end_time: datetime, machine_id: str, 
                              process_data: Dict[str, Any], report_id: str) -> Dict[str, Any]:
         """Create the complete report content structure"""
-        run_duration = timedelta(seconds=process_data.get('run_duration', 0))
+        run_duration_seconds = process_data.get('run_duration', 0)
         
         return {
             'header': {
@@ -416,7 +416,7 @@ class ReportGenerator:
                 'machine_id': machine_id
             },
             'process_summary': {
-                'run_duration': str(run_duration).split('.')[0],  # Remove microseconds
+                'run_duration': self._format_duration(run_duration_seconds),  # Format as HH:MM:SS
                 'sensors': process_data.get('sensors', {})
             },
             'key_process_data': {
@@ -443,7 +443,7 @@ class ReportGenerator:
             
             if 'statistics' in sensor_data and sensor_data['statistics']:
                 stats = sensor_data['statistics']
-                duration_str = f"{int(stats.get('duration', 0)):02d}:{int((stats.get('duration', 0) % 60)):02d}"
+                duration_str = self._format_duration(stats.get('duration', 0))
                 
                 table_data.append([
                     sensor_name.replace('_', ' ').title(),
@@ -459,10 +459,20 @@ class ReportGenerator:
                     "No Data",
                     "No Data",
                     "No Data",
-                    "00:00"
+                    "00:00:00"
                 ])
                 
         return table_data
+        
+    def _format_duration(self, duration_seconds: float) -> str:
+        """Format duration in seconds to HH:MM:SS format"""
+        try:
+            hours = int(duration_seconds // 3600)
+            minutes = int((duration_seconds % 3600) // 60)
+            seconds = int(duration_seconds % 60)
+            return f"{hours:02d}:{minutes:02d}:{seconds:02d}"
+        except (ValueError, TypeError):
+            return "00:00:00"
         
     def _format_setpoints_data(self, process_data: Dict[str, Any], start_time: datetime = None, end_time: datetime = None) -> List[List[str]]:
         """Format setpoints data for table display with dynamic deviation calculation"""
