@@ -357,7 +357,11 @@ class FSMStateMachine:
     def _is_setpoint_jump(self, setpoint: float) -> bool:
         """Check if setpoint has jumped significantly"""
         if self.sp_ref is None:
-            return False
+            # If this is the first setpoint reading, treat it as a jump if it's high enough
+            # This handles the case where we start from IDLE with a high setpoint
+            baseline_temp = 75.0  # Assume baseline temperature around room temp
+            s_min = self.config.get('S_min_F', 20)
+            return abs(setpoint - baseline_temp) >= s_min
             
         s_min = self.config.get('S_min_F', 20)
         return abs(setpoint - self.sp_ref) >= s_min
