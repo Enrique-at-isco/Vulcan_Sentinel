@@ -13,6 +13,7 @@ services:
       - ./reports:/app/reports
       - ./data:/app/data
       - ./config:/app/config:ro
+      - ./test_fsm.py:/app/test_fsm.py:ro
     environment:
       - LOG_LEVEL=INFO
       - DATABASE_PATH=/app/data/vulcan_sentinel.db
@@ -31,6 +32,7 @@ services:
       - ./reports:/app/reports
       - ./data:/app/data
       - ./config:/app/config:ro
+      - ./test_fsm.py:/app/test_fsm.py:ro
       - /dev/bus/usb:/dev/bus/usb
       - /var/run/cups/cups.sock:/var/run/cups/cups.sock
     environment:
@@ -54,6 +56,7 @@ services:
       - ./reports:/app/reports
       - ./data:/app/data
       - ./config:/app/config:ro
+      - ./test_fsm.py:/app/test_fsm.py:ro
     environment:
       - SERVICE_TYPE=reports
       - LOG_LEVEL=INFO
