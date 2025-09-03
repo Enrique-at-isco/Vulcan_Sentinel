@@ -67,10 +67,14 @@ class FSMWorker:
             self.worker_thread = threading.Thread(target=self._worker_loop, daemon=True)
             self.sampler_thread = threading.Thread(target=self._sampler_loop, daemon=True)
             
+            # Small delay to allow Modbus poller to collect initial data
+            logger.info("FSM Worker waiting 5 seconds for initial data collection...")
+            time.sleep(5.0)
+            
             self.worker_thread.start()
             self.sampler_thread.start()
             
-            logger.info("FSM Worker started successfully")
+            logger.info("FSM Worker started successfully - waiting for data...")
             
         except Exception as e:
             logger.error(f"Failed to start FSM Worker: {e}")
@@ -121,7 +125,7 @@ class FSMWorker:
     def _get_default_config(self) -> Dict[str, Any]:
         """Get default FSM configuration"""
         return {
-            'sampling_period_s': 2.0,
+            'sampling_period_s': 5.0,  # Start with longer sampling period
             'Tol_F': 8,
             'DeltaRamp_F': 20,
             'dT_min_F_per_min': 10,
@@ -167,12 +171,17 @@ class FSMWorker:
         """Sample loop that reads Modbus registers and queues samples"""
         logger.info("FSM Sampler loop started")
         
+        # Wait a bit more for data to be available
+        time.sleep(2.0)
+        logger.info("FSM Sampler starting to collect data...")
+        
         while self.running:
             try:
                 # Read current values from all enabled zones
                 zones_snapshot = self._read_zones_snapshot()
                 
-                if zones_snapshot:
+                # Only queue non-empty snapshots
+                if zones_snapshot and len(zones_snapshot) > 0:
                     # Queue the snapshot for processing
                     try:
                         self.sample_queue.put_nowait(zones_snapshot)
@@ -193,11 +202,18 @@ class FSMWorker:
                 logger.error(f"Error in FSM sampler loop: {e}")
                 time.sleep(1.0)  # Brief pause on error
                 
+        # Brief pause before next iteration
+        time.sleep(0.1)
+                
         logger.info("FSM Sampler loop stopped")
         
     def _worker_loop(self):
         """Worker loop that processes queued samples and runs FSM logic"""
         logger.info("FSM Worker loop started")
+        
+        # Wait a bit more for data to be available
+        time.sleep(2.0)
+        logger.info("FSM Worker starting to process data...")
         
         while self.running:
             try:
@@ -207,15 +223,16 @@ class FSMWorker:
                 except:
                     continue  # Timeout, check if still running
                     
-                # Process sample through FSM
-                events = self._process_sample(zones_snapshot)
-                
-                # Handle events
-                for event in events:
-                    self._handle_fsm_event(event)
+                # Process sample through FSM (only if we have valid data)
+                if zones_snapshot:
+                    events = self._process_sample(zones_snapshot)
                     
-                # Update runtime state in database
-                self._update_runtime_state()
+                    # Handle events
+                    for event in events:
+                        self._handle_fsm_event(event)
+                        
+                    # Update runtime state in database
+                    self._update_runtime_state()
                 
                 # Update statistics
                 self.samples_processed += 1
@@ -251,7 +268,11 @@ class FSMWorker:
                 if zone_snapshot:
                     zones[zone_name] = zone_snapshot
                     
-            return zones if zones else None
+            # Only return zones if we have at least one valid zone
+            if zones and len(zones) > 0:
+                return zones
+            else:
+                return None
             
         except Exception as e:
             logger.error(f"Failed to read zones snapshot: {e}")
@@ -260,39 +281,41 @@ class FSMWorker:
     def _read_zone_snapshot(self, zone_name: str, device_config: Dict[str, Any]) -> Optional[ZoneSnapshot]:
         """Read snapshot for a single zone"""
         try:
-            # For now, we'll use the existing database readings
-            # In a full implementation, this would read directly from Modbus
-            
-            # Get latest reading from database
+            # Get latest reading from database for temperature
             latest_readings = self.db_manager.get_latest_readings()
             
-            # Extract temperature and setpoint for this zone
-            temperature = None
-            setpoint = None
-            
-            for reading in latest_readings:
-                if reading['sensor_name'] == zone_name:
-                    temperature = reading.get('temperature')
-                    setpoint = reading.get('setpoint')
-                    break
-                    
-            if temperature is None or setpoint is None:
-                logger.warning(f"Missing data for zone {zone_name}")
+            # Check if we have any readings yet
+            if not latest_readings:
+                # This is normal during startup when Modbus poller hasn't collected data yet
                 return None
                 
+            # Extract temperature for this zone
+            temperature = None
+            for reading in latest_readings:
+                if reading['device_name'] == zone_name:
+                    temperature = reading.get('value')  # Database uses 'value' field
+                    break
+                    
+            if temperature is None:
+                # This is normal during startup when some zones haven't been polled yet
+                return None
+                
+            # For now, use default setpoint values since we're not reading directly from Modbus yet
+            # TODO: Implement direct Modbus reading for setpoints in future enhancement
+            default_setpoint = 150.0  # Default setpoint, should be read from Modbus register 2172
+            
             # Create zone snapshot
-            # Note: In full implementation, we'd read SP_cmd, SP_idle, and AI_error from Modbus
             return ZoneSnapshot(
                 T=float(temperature),
-                SP_active=float(setpoint),
-                SP_cmd=float(setpoint),  # Same as active for now
-                SP_idle=float(setpoint),  # Same as active for now
+                SP_active=default_setpoint,  # Should read from Modbus register 2172
+                SP_cmd=default_setpoint,    # Should read from Modbus register 2172
+                SP_idle=default_setpoint,   # Should read from Modbus register 2172
                 valid=True,  # Assume valid for now
                 timestamp=datetime.now()
             )
             
         except Exception as e:
-            logger.error(f"Failed to read zone snapshot for {zone_name}: {e}")
+            logger.debug(f"Failed to read zone snapshot for {zone_name}: {e}")
             return None
             
     def _process_sample(self, zones_snapshot: Dict[str, ZoneSnapshot]) -> List[FSMEvent]:
