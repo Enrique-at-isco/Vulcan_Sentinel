@@ -207,6 +207,67 @@ class FSMWorker:
                 
         logger.info("FSM Sampler loop stopped")
         
+    def _read_setpoint_from_modbus(self, zone_name: str, device_config: Dict[str, Any]) -> float:
+        """Read setpoint from Modbus register 2172 for a zone"""
+        try:
+            from pymodbus.client import ModbusTcpClient
+            from pymodbus.payload import BinaryPayloadDecoder
+            from pymodbus.constants import Endian
+            import math
+            
+            # Get device IP and port from config
+            device_ip = device_config.get('ip_address')
+            device_port = device_config.get('port', 502)
+            
+            if not device_ip:
+                logger.warning(f"No IP address configured for {zone_name}")
+                return 150.0  # Fallback to default
+                
+            # Create Modbus client
+            client = ModbusTcpClient(device_ip, port=device_port, timeout=2.0)
+            
+            try:
+                # Connect to device
+                if not client.connect():
+                    logger.warning(f"Failed to connect to {zone_name} at {device_ip}")
+                    return 150.0  # Fallback to default
+                    
+                # Read setpoint register 2172 (2 registers for IEEE Float)
+                # Note: register 2172 in Modbus is actually address 2171 (0-based)
+                result = client.read_input_registers(2171, 2, slave=1)
+                
+                if result.isError():
+                    logger.warning(f"Failed to read setpoint from {zone_name}: {result}")
+                    return 150.0  # Fallback to default
+                    
+                # Decode IEEE Float (32-bit)
+                registers = result.registers
+                decoder = BinaryPayloadDecoder.fromRegisters(
+                    registers, 
+                    byteorder=Endian.BIG, 
+                    wordorder=Endian.LITTLE
+                )
+                
+                setpoint = decoder.decode_32bit_float()
+                
+                # Validate the decoded value
+                if math.isnan(setpoint) or math.isinf(setpoint):
+                    logger.warning(f"Invalid setpoint value from {zone_name}: {setpoint}")
+                    return 150.0  # Fallback to default
+                    
+                # Round to 1 decimal place
+                setpoint = round(setpoint, 1)
+                
+                logger.debug(f"Read setpoint from {zone_name}: {setpoint}°F")
+                return setpoint
+                
+            finally:
+                client.close()
+                
+        except Exception as e:
+            logger.warning(f"Failed to read setpoint from Modbus for {zone_name}: {e}")
+            return 150.0  # Fallback to default
+        
     def _worker_loop(self):
         """Worker loop that processes queued samples and runs FSM logic"""
         logger.info("FSM Worker loop started")
@@ -300,16 +361,15 @@ class FSMWorker:
                 # This is normal during startup when some zones haven't been polled yet
                 return None
                 
-            # For now, use default setpoint values since we're not reading directly from Modbus yet
-            # TODO: Implement direct Modbus reading for setpoints in future enhancement
-            default_setpoint = 150.0  # Default setpoint, should be read from Modbus register 2172
+            # Read setpoint directly from Modbus register 2172
+            setpoint = self._read_setpoint_from_modbus(zone_name, device_config)
             
             # Create zone snapshot
             return ZoneSnapshot(
                 T=float(temperature),
-                SP_active=default_setpoint,  # Should read from Modbus register 2172
-                SP_cmd=default_setpoint,    # Should read from Modbus register 2172
-                SP_idle=default_setpoint,   # Should read from Modbus register 2172
+                SP_active=setpoint,  # Read from Modbus register 2172
+                SP_cmd=setpoint,     # Use same value for now
+                SP_idle=setpoint,    # Use same value for now
                 valid=True,  # Assume valid for now
                 timestamp=datetime.now()
             )
