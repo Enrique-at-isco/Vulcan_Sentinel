@@ -368,10 +368,16 @@ class FSMWorker:
     def _handle_stage_start(self, event: FSMEvent):
         """Handle stage start event"""
         try:
-            # Create FSM run if this is the first stage
-            if not self.db_manager.get_fsm_runs(self.line_id, limit=1):
+            # Always create FSM run for new stages to ensure foreign key integrity
+            try:
                 self.db_manager.create_fsm_run(event.run_id, self.line_id, event.timestamp)
                 logger.info(f"Created FSM run {event.run_id}")
+            except Exception as run_error:
+                # If run already exists, that's fine - just log it
+                if "UNIQUE constraint failed" in str(run_error):
+                    logger.debug(f"FSM run {event.run_id} already exists")
+                else:
+                    logger.warning(f"Failed to create FSM run {event.run_id}: {run_error}")
                 
         except Exception as e:
             logger.error(f"Failed to handle stage start: {e}")

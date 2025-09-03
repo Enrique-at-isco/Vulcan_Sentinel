@@ -119,6 +119,11 @@ class DatabaseManager:
     def _create_fsm_tables(self, conn):
         """Create FSM-specific database tables"""
         try:
+            # Drop existing tables if they have old constraints
+            conn.execute("DROP TABLE IF EXISTS fsm_stages")
+            conn.execute("DROP TABLE IF EXISTS fsm_runtime_state")
+            conn.execute("DROP TABLE IF EXISTS fsm_runs")
+            
             # Runtime state (1 row per line)
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS fsm_runtime_state (
@@ -130,7 +135,7 @@ class DatabaseManager:
                     sp_ref REAL,
                     config_version INTEGER NOT NULL DEFAULT 1,
                     updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    CONSTRAINT stage_ck CHECK (stage IN ('none','preheat','main','rib'))
+                    CONSTRAINT stage_ck CHECK (stage IN ('none','preheat','main_heat','rib_heat'))
                 )
             """)
             
