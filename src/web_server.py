@@ -84,9 +84,14 @@ class VulcanSentinelWebServer:
             return self._get_dashboard()
         
         @self.app.route('/reports')
-        def reports():
-            """Report generation page"""
+        def reports_page():
+            """Reports page"""
             return render_template('reports.html')
+            
+        @self.app.route('/fsm')
+        def fsm_dashboard():
+            """FSM Dashboard page"""
+            return render_template('fsm_dashboard.html')
         
         @self.app.route('/api/status')
         def api_status():
@@ -186,6 +191,83 @@ class VulcanSentinelWebServer:
         def api_export_csv(report_id):
             """Export report data to CSV"""
             return self._export_report_csv(report_id)
+        
+        # FSM status endpoints
+        @self.app.route('/api/fsm/status')
+        def get_fsm_status():
+            """Get FSM system status"""
+            try:
+                # Get FSM worker status if available
+                fsm_status = None
+                if hasattr(self, 'fsm_worker') and self.fsm_worker:
+                    fsm_status = self.fsm_worker.get_status()
+                
+                # Get FSM runtime state from database
+                runtime_state = self.db_manager.get_fsm_runtime_state("Line-07")
+                
+                # Get recent FSM runs
+                recent_runs = self.db_manager.get_fsm_runs("Line-07", limit=10)
+                
+                return jsonify({
+                    'status': 'success',
+                    'data': {
+                        'fsm_worker': fsm_status,
+                        'runtime_state': runtime_state,
+                        'recent_runs': recent_runs
+                    }
+                })
+                
+            except Exception as e:
+                logger.error(f"Failed to get FSM status: {e}")
+                return jsonify({'status': 'error', 'message': str(e)}), 500
+                
+        @self.app.route('/api/fsm/runs')
+        def get_fsm_runs():
+            """Get FSM runs with optional filtering"""
+            try:
+                limit = request.args.get('limit', 50, type=int)
+                line_id = request.args.get('line_id', 'Line-07')
+                
+                runs = self.db_manager.get_fsm_runs(line_id, limit)
+                
+                return jsonify({
+                    'status': 'success',
+                    'data': runs
+                })
+                
+            except Exception as e:
+                logger.error(f"Failed to get FSM runs: {e}")
+                return jsonify({'status': 'error', 'message': str(e)}), 500
+                
+        @self.app.route('/api/fsm/config', methods=['GET', 'PUT'])
+        def manage_fsm_config():
+            """Get or update FSM configuration"""
+            try:
+                line_id = request.args.get('line_id', 'Line-07')
+                
+                if request.method == 'GET':
+                    # Get current config
+                    config = self.db_manager.get_fsm_config(line_id)
+                    return jsonify({
+                        'status': 'success',
+                        'data': config
+                    })
+                    
+                elif request.method == 'PUT':
+                    # Update config
+                    new_config = request.get_json()
+                    if not new_config:
+                        return jsonify({'status': 'error', 'message': 'No configuration data provided'}), 400
+                        
+                    success = self.db_manager.update_fsm_config(line_id, new_config)
+                    if success:
+                        return jsonify({'status': 'success', 'message': 'Configuration updated'})
+                    else:
+                        return jsonify({'status': 'error', 'message': 'Failed to update configuration'}), 500
+                        
+            except Exception as e:
+                logger.error(f"Failed to manage FSM config: {e}")
+                return jsonify({'status': 'error', 'message': str(e)}), 500
     
     def _get_dashboard(self):
         """Generate dashboard HTML using Flask templates"""

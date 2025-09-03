@@ -1,0 +1,100 @@
+# FSM Configuration for Vulcan Sentinel
+# This file contains all the parameters for the automatic report generation FSM
+
+fsm_config:
+  line_id: "Line-07"
+  
+  # Sampling and timing parameters
+  sampling_period_s: 2.0          # FSM sampling interval (seconds)
+  
+  # Temperature tolerance and detection parameters
+  Tol_F: 8                        # ±8°F tolerance band around setpoint
+  DeltaRamp_F: 20                 # 20°F rise needed from baseline for ramp detection
+  dT_min_F_per_min: 10            # 10°F/min minimum slope for ramp detection
+  T_stable_s: 90                  # 90 seconds continuously in-band to mark stable
+  
+  # Stage exit parameters
+  DeltaOff_F: 20                  # 20°F below setpoint to consider exit
+  T_off_sustain_s: 45             # 45 seconds continuously out of band before ending
+  
+  # Setpoint change detection
+  S_min_F: 20                     # 20°F minimum setpoint change for new stage
+  T_sp_sustain_s: 20              # 20 seconds setpoint must remain changed
+  
+  # Timeout parameters
+  Max_ramp_s: 900                 # 15 minutes max ramp time per stage
+  Max_stage_s: 7200               # 2 hours max stage duration (guardrail)
+  
+  # Quiet period detection
+  quiet_window_s: 720             # 12 minutes quiet period before partial report
+  dT_quiet_F_per_min: 2           # 2°F/min quiet threshold
+  
+  # Process behavior options
+  allow_main_without_preheat: true        # Allow main heat if preheat never stabilizes
+  continue_after_fault_if_next_stage_ramps: true  # Continue if next stage begins ramping
+  
+  # Device-specific register mappings
+  # These will be populated from devices.yaml automatically
+  device_mapping:
+    preheat:
+      enabled: true
+      instance: 1
+      registers:
+        temperature: 402           # Filtered Process Value
+        setpoint_active: 2172     # Active Closed-Loop Set Point
+        setpoint_cmd: 2160        # Control Loop - Set Point
+        setpoint_idle: 2176       # Control Loop - Idle Set Point
+        ai_error: 362             # Analog Input - Input Error
+    
+    main_heat:
+      enabled: true
+      instance: 2
+      registers:
+        temperature: 482           # Filtered Process Value (Instance 2)
+        setpoint_active: 2252     # Active Closed-Loop Set Point (Instance 2)
+        setpoint_cmd: 2240        # Control Loop - Set Point (Instance 2)
+        setpoint_idle: 2256       # Control Loop - Idle Set Point (Instance 2)
+        ai_error: 442             # Analog Input - Input Error (Instance 2)
+    
+    rib_heat:
+      enabled: false              # Disabled for test bed, will be enabled in production
+      instance: 3
+      registers:
+        temperature: 562           # Filtered Process Value (Instance 3)
+        setpoint_active: 2332     # Active Closed-Loop Set Point (Instance 3)
+        setpoint_cmd: 2320        # Control Loop - Set Point (Instance 3)
+        setpoint_idle: 2336       # Control Loop - Idle Set Point (Instance 3)
+        ai_error: 522             # Analog Input - Input Error (Instance 3)
+
+# FSM State Machine States
+states:
+  - IDLE
+  - PREHEAT_RAMP
+  - PREHEAT_STABLE
+  - PREHEAT_END
+  - MAIN_RAMP
+  - MAIN_STABLE
+  - MAIN_END
+  - RIB_RAMP
+  - RIB_STABLE
+  - RIB_END
+  - REPORT
+
+# Stage definitions
+stages:
+  preheat:
+    name: "Preheat"
+    order: 1
+    next_stage: "main_heat"
+    
+  main_heat:
+    name: "Main Heat"
+    order: 2
+    next_stage: "rib_heat"
+    can_skip_previous: true      # Can run even if preheat fails
+    
+  rib_heat:
+    name: "Rib Heat"
+    order: 3
+    next_stage: "complete"
+    can_skip_previous: false     # Requires main_heat to complete

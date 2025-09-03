@@ -61,102 +61,154 @@ class DatabaseManager:
             raise
     
     def create_tables(self):
-        """Create all necessary database tables"""
-        conn = None
+        """Create all database tables if they don't exist"""
         try:
             conn = self._get_connection()
-            cursor = conn.cursor()
-            
-            # Create devices table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS devices (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    name TEXT NOT NULL UNIQUE,
-                    ip_address TEXT NOT NULL,
-                    port INTEGER NOT NULL DEFAULT 502,
-                    slave_id INTEGER NOT NULL DEFAULT 1,
-                    register_address INTEGER NOT NULL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Create new simplified readings table
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS readings (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    date DATE NOT NULL,
-                    timestamp TIME NOT NULL,
-                    preheat REAL,
-                    main_heat REAL,
-                    rib_heat REAL,
-                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Create setpoints table for storing temperature setpoints
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS setpoints (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    device_name TEXT NOT NULL,
-                    setpoint_value REAL NOT NULL,
-                    deviation REAL DEFAULT 5.0,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(device_name)
-                )
-            """)
-            
-            # Create events table for system events
-            cursor.execute("""
-                CREATE TABLE IF NOT EXISTS events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    event_type TEXT NOT NULL,
-                    device_name TEXT,
-                    message TEXT NOT NULL,
-                    severity TEXT NOT NULL,
-                    timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-                )
-            """)
-            
-            # Create indexes for better performance
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_readings_date_timestamp 
-                ON readings (date, timestamp)
-            """)
-            
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_readings_date 
-                ON readings (date)
-            """)
-            
-            cursor.execute("""
-                CREATE INDEX IF NOT EXISTS idx_events_timestamp 
-                ON events (timestamp)
-            """)
-            
-            conn.commit()
-            logger.info("Database tables created successfully")
-            
-            # Initialize default setpoints if table is empty
-            cursor.execute("SELECT COUNT(*) FROM setpoints")
-            if cursor.fetchone()[0] == 0:
-                logger.info("Initializing default setpoints")
-                self.store_setpoint("preheat", 150.0, None)  # Deviation will be calculated dynamically
-                self.store_setpoint("main_heat", 200.0, None)  # Deviation will be calculated dynamically
-                self.store_setpoint("rib_heat", 175.0, None)  # Deviation will be calculated dynamically
-            else:
-                logger.info("Setpoints table already has data")
-            
-            conn.commit()
-            logger.info("Database tables created successfully")
-            
+            try:
+                # Create readings table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS readings (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        date TEXT NOT NULL,
+                        timestamp TEXT NOT NULL,
+                        preheat REAL,
+                        main_heat REAL,
+                        rib_heat REAL,
+                        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        UNIQUE(date, timestamp)
+                    )
+                """)
+                
+                # Create setpoints table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS setpoints (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        sensor_name TEXT NOT NULL UNIQUE,
+                        setpoint_value REAL NOT NULL,
+                        deviation REAL DEFAULT 5.0,
+                        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+                    )
+                """)
+                
+                # Create events table
+                conn.execute("""
+                    CREATE TABLE IF NOT EXISTS events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        timestamp TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                        event_type TEXT NOT NULL,
+                        message TEXT NOT NULL,
+                        device_name TEXT,
+                        severity TEXT DEFAULT 'INFO'
+                    )
+                """)
+                
+                # Create FSM tables
+                self._create_fsm_tables(conn)
+                
+                conn.commit()
+                logger.info("Database tables created successfully")
+                
+            finally:
+                if conn:
+                    conn.close()
+                    
         except Exception as e:
             logger.error(f"Failed to create database tables: {e}")
-            if conn:
-                conn.rollback()
             raise
-        finally:
-            if conn:
-                conn.close()
+            
+    def _create_fsm_tables(self, conn):
+        """Create FSM-specific database tables"""
+        try:
+            # Runtime state (1 row per line)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS fsm_runtime_state (
+                    line_id TEXT PRIMARY KEY,
+                    state TEXT NOT NULL DEFAULT 'IDLE',
+                    run_id TEXT,
+                    stage TEXT NOT NULL DEFAULT 'none',
+                    stage_enter_ts TIMESTAMP,
+                    sp_ref REAL,
+                    config_version INTEGER NOT NULL DEFAULT 1,
+                    updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT stage_ck CHECK (stage IN ('none','preheat','main','rib'))
+                )
+            """)
+            
+            # Run header (immutable-ish)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS fsm_runs (
+                    run_id TEXT PRIMARY KEY,
+                    line_id TEXT NOT NULL,
+                    started_at TIMESTAMP NOT NULL,
+                    ended_at TIMESTAMP,
+                    end_reason TEXT,
+                    wo TEXT,
+                    auto BOOLEAN NOT NULL DEFAULT 1,
+                    preheat_ok BOOLEAN,
+                    main_ok BOOLEAN,
+                    rib_ok BOOLEAN,
+                    preheat_flags TEXT DEFAULT '{}',
+                    main_flags TEXT DEFAULT '{}',
+                    rib_flags TEXT DEFAULT '{}',
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    CONSTRAINT end_reason_ck CHECK (end_reason IN ('normal','fault','timeout','quiet_timeout'))
+                )
+            """)
+            
+            # Per-stage stats
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS fsm_stages (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    run_id TEXT NOT NULL,
+                    stage TEXT NOT NULL,
+                    start_ts TIMESTAMP NOT NULL,
+                    end_ts TIMESTAMP NOT NULL,
+                    sp_start REAL,
+                    sp_end REAL,
+                    t_min REAL,
+                    t_max REAL,
+                    t_mean REAL,
+                    t_std REAL,
+                    status TEXT NOT NULL DEFAULT 'normal',
+                    FOREIGN KEY (run_id) REFERENCES fsm_runs(run_id) ON DELETE CASCADE,
+                    UNIQUE(run_id, stage, start_ts)
+                )
+            """)
+            
+            # Versioned config (JSON stored as TEXT for SQLite compatibility)
+            conn.execute("""
+                CREATE TABLE IF NOT EXISTS fsm_config (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    line_id TEXT NOT NULL,
+                    version INTEGER NOT NULL,
+                    params TEXT NOT NULL,
+                    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(line_id, version)
+                )
+            """)
+            
+            # Create indexes
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fsm_runs_line_started ON fsm_runs (line_id, started_at DESC)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fsm_runs_wo ON fsm_runs (wo)")
+            conn.execute("CREATE INDEX IF NOT EXISTS idx_fsm_stages_run ON fsm_stages (run_id)")
+            
+            # Insert default FSM config if none exists
+            conn.execute("""
+                INSERT OR IGNORE INTO fsm_config (line_id, version, params) VALUES 
+                ('Line-07', 1, '{"sampling_period_s": 2.0, "Tol_F": 8, "DeltaRamp_F": 20, "dT_min_F_per_min": 10, "T_stable_s": 90, "DeltaOff_F": 20, "T_off_sustain_s": 45, "S_min_F": 20, "T_sp_sustain_s": 20, "Max_ramp_s": 900, "Max_stage_s": 7200, "quiet_window_s": 720, "dT_quiet_F_per_min": 2, "allow_main_without_preheat": true, "continue_after_fault_if_next_stage_ramps": true}')
+            """)
+            
+            # Insert default runtime state
+            conn.execute("""
+                INSERT OR IGNORE INTO fsm_runtime_state (line_id, state, stage, config_version) VALUES 
+                ('Line-07', 'IDLE', 'none', 1)
+            """)
+            
+            logger.info("FSM tables created successfully")
+            
+        except Exception as e:
+            logger.error(f"Failed to create FSM tables: {e}")
+            raise
     
     def store_readings(self, device_name: str, timestamp: datetime, readings: Dict[str, float]):
         """Store readings for a device in the new format"""
@@ -840,11 +892,208 @@ class DatabaseManager:
             return readings
             
         except Exception as e:
-            logger.error(f"Failed to get readings for period for {device_name}: {e}")
+            logger.error(f"Failed to get readings for period: {e}")
             return []
-        finally:
-            if conn:
-                conn.close()
+            
+    # FSM-specific methods
+    def get_fsm_config(self, line_id: str) -> Optional[Dict[str, Any]]:
+        """Get the latest FSM configuration for a line"""
+        try:
+            conn = self._get_connection()
+            try:
+                cursor = conn.execute("""
+                    SELECT params FROM fsm_config 
+                    WHERE line_id = ? 
+                    ORDER BY version DESC 
+                    LIMIT 1
+                """, (line_id,))
+                row = cursor.fetchone()
+                if row:
+                    return json.loads(row[0])
+                return None
+            finally:
+                if conn:
+                    conn.close()
+        except Exception as e:
+            logger.error(f"Failed to get FSM config: {e}")
+            return None
+            
+    def update_fsm_config(self, line_id: str, params: Dict[str, Any]) -> bool:
+        """Update FSM configuration for a line"""
+        try:
+            conn = self._get_connection()
+            try:
+                # Get next version number
+                cursor = conn.execute("""
+                    SELECT COALESCE(MAX(version), 0) + 1 FROM fsm_config WHERE line_id = ?
+                """, (line_id,))
+                next_version = cursor.fetchone()[0]
+                
+                # Insert new config
+                conn.execute("""
+                    INSERT INTO fsm_config (line_id, version, params) VALUES (?, ?, ?)
+                """, (line_id, next_version, json.dumps(params)))
+                
+                conn.commit()
+                logger.info(f"Updated FSM config for {line_id} to version {next_version}")
+                return True
+            finally:
+                if conn:
+                    conn.close()
+        except Exception as e:
+            logger.error(f"Failed to update FSM config: {e}")
+            return False
+            
+    def get_fsm_runtime_state(self, line_id: str) -> Optional[Dict[str, Any]]:
+        """Get current FSM runtime state for a line"""
+        try:
+            conn = self._get_connection()
+            try:
+                cursor = conn.execute("""
+                    SELECT state, run_id, stage, stage_enter_ts, sp_ref, config_version, updated_at
+                    FROM fsm_runtime_state WHERE line_id = ?
+                """, (line_id,))
+                row = cursor.fetchone()
+                if row:
+                    return {
+                        'state': row[0],
+                        'run_id': row[1],
+                        'stage': row[2],
+                        'stage_enter_ts': row[3],
+                        'sp_ref': row[4],
+                        'config_version': row[5],
+                        'updated_at': row[6]
+                    }
+                return None
+            finally:
+                if conn:
+                    conn.close()
+        except Exception as e:
+            logger.error(f"Failed to get FSM runtime state: {e}")
+            return None
+            
+    def update_fsm_runtime_state(self, line_id: str, state: str, stage: str = 'none', 
+                                run_id: str = None, sp_ref: float = None) -> bool:
+        """Update FSM runtime state for a line"""
+        try:
+            conn = self._get_connection()
+            try:
+                conn.execute("""
+                    UPDATE fsm_runtime_state 
+                    SET state = ?, stage = ?, run_id = ?, sp_ref = ?, updated_at = CURRENT_TIMESTAMP
+                    WHERE line_id = ?
+                """, (state, stage, run_id, sp_ref, line_id))
+                
+                conn.commit()
+                return True
+            finally:
+                if conn:
+                    conn.close()
+        except Exception as e:
+            logger.error(f"Failed to update FSM runtime state: {e}")
+            return False
+            
+    def create_fsm_run(self, run_id: str, line_id: str, started_at: datetime) -> bool:
+        """Create a new FSM run"""
+        try:
+            conn = self._get_connection()
+            try:
+                conn.execute("""
+                    INSERT INTO fsm_runs (run_id, line_id, started_at, auto)
+                    VALUES (?, ?, ?, 1)
+                """, (run_id, line_id, started_at.isoformat()))
+                
+                conn.commit()
+                return True
+            finally:
+                if conn:
+                    conn.close()
+        except Exception as e:
+            logger.error(f"Failed to create FSM run: {e}")
+            return False
+            
+    def end_fsm_run(self, run_id: str, ended_at: datetime, end_reason: str,
+                    preheat_ok: bool = None, main_ok: bool = None, rib_ok: bool = None,
+                    preheat_flags: Dict = None, main_flags: Dict = None, rib_flags: Dict = None) -> bool:
+        """End an FSM run with results"""
+        try:
+            conn = self._get_connection()
+            try:
+                conn.execute("""
+                    UPDATE fsm_runs 
+                    SET ended_at = ?, end_reason = ?, preheat_ok = ?, main_ok = ?, rib_ok = ?,
+                        preheat_flags = ?, main_flags = ?, rib_flags = ?
+                    WHERE run_id = ?
+                """, (ended_at.isoformat(), end_reason, preheat_ok, main_ok, rib_ok,
+                      json.dumps(preheat_flags or {}), json.dumps(main_flags or {}), 
+                      json.dumps(rib_flags or {}), run_id))
+                
+                conn.commit()
+                return True
+            finally:
+                if conn:
+                    conn.close()
+        except Exception as e:
+            logger.error(f"Failed to end FSM run: {e}")
+            return False
+            
+    def add_fsm_stage(self, run_id: str, stage: str, start_ts: datetime, end_ts: datetime,
+                      sp_start: float, sp_end: float, t_min: float, t_max: float,
+                      t_mean: float, t_std: float, status: str = 'normal') -> bool:
+        """Add a completed stage to an FSM run"""
+        try:
+            conn = self._get_connection()
+            try:
+                conn.execute("""
+                    INSERT INTO fsm_stages (run_id, stage, start_ts, end_ts, sp_start, sp_end,
+                                          t_min, t_max, t_mean, t_std, status)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """, (run_id, stage, start_ts.isoformat(), end_ts.isoformat(),
+                      sp_start, sp_end, t_min, t_max, t_mean, t_std, status))
+                
+                conn.commit()
+                return True
+            finally:
+                if conn:
+                    conn.close()
+        except Exception as e:
+            logger.error(f"Failed to add FSM stage: {e}")
+            return False
+            
+    def get_fsm_runs(self, line_id: str, limit: int = 50) -> List[Dict[str, Any]]:
+        """Get recent FSM runs for a line"""
+        try:
+            conn = self._get_connection()
+            try:
+                cursor = conn.execute("""
+                    SELECT run_id, started_at, ended_at, end_reason, wo, auto,
+                           preheat_ok, main_ok, rib_ok
+                    FROM fsm_runs 
+                    WHERE line_id = ? 
+                    ORDER BY started_at DESC 
+                    LIMIT ?
+                """, (line_id, limit))
+                
+                runs = []
+                for row in cursor.fetchall():
+                    runs.append({
+                        'run_id': row[0],
+                        'started_at': row[1],
+                        'ended_at': row[2],
+                        'end_reason': row[3],
+                        'wo': row[4],
+                        'auto': bool(row[5]),
+                        'preheat_ok': row[6],
+                        'main_ok': row[7],
+                        'rib_ok': row[8]
+                    })
+                return runs
+            finally:
+                if conn:
+                    conn.close()
+        except Exception as e:
+            logger.error(f"Failed to get FSM runs: {e}")
+            return []
     
     def close(self):
         """Close database connection - not needed with connection pooling"""

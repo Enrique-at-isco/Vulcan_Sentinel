@@ -26,6 +26,7 @@ from src.database import DatabaseManager
 from src.config_manager import ConfigManager
 from src.web_server import VulcanSentinelWebServer
 from src.report_generator import ReportGenerator
+from src.fsm_worker import FSMWorker
 
 # Configure logging with error handling
 def setup_logging():
@@ -64,6 +65,7 @@ class VulcanSentinelApp:
         self.modbus_poller = None
         self.web_server = None
         self.report_generator = None
+        self.fsm_worker = None
         self.running = False
         self.services = {}
         
@@ -103,6 +105,10 @@ class VulcanSentinelApp:
             # Initialize report generator
             logger.info("Initializing report generator...")
             self.report_generator = ReportGenerator(self.db_manager, self.config_manager)
+
+            # Initialize FSM worker
+            logger.info("Initializing FSM worker...")
+            self.fsm_worker = FSMWorker(self.db_manager, self.config_manager)
             
             # Initialize web server
             logger.info("Initializing web server...")
@@ -156,6 +162,16 @@ class VulcanSentinelApp:
                 web_thread.start()
                 self.services['web_server'] = self.web_server
             
+            # Start FSM worker in a separate thread
+            if self.fsm_worker:
+                logger.info("Starting FSM worker...")
+                fsm_thread = threading.Thread(
+                    target=self.fsm_worker.start,
+                    daemon=True
+                )
+                fsm_thread.start()
+                self.services['fsm_worker'] = self.fsm_worker
+            
             # Log startup event
             self.db_manager.log_event(
                 event_type="SERVICES_STARTED",
@@ -180,6 +196,11 @@ class VulcanSentinelApp:
             if self.modbus_poller:
                 logger.info("Stopping Modbus poller...")
                 self.modbus_poller.stop()
+            
+            # Stop FSM worker
+            if self.fsm_worker:
+                logger.info("Stopping FSM worker...")
+                self.fsm_worker.stop()
             
             # Log shutdown event
             self.db_manager.log_event(
@@ -219,6 +240,10 @@ class VulcanSentinelApp:
         # Get Modbus poller status
         if self.modbus_poller:
             status['services']['modbus_poller'] = self.modbus_poller.get_status()
+        
+        # Get FSM worker status
+        if self.fsm_worker:
+            status['services']['fsm_worker'] = self.fsm_worker.get_status()
         
         # Get database info
         if self.db_manager:
