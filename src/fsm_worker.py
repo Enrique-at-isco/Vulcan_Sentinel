@@ -216,7 +216,7 @@ class FSMWorker:
             import math
             
             # Get device IP and port from config
-            device_ip = device_config.get('ip_address')
+            device_ip = device_config.get('ip')  # devices.yaml uses 'ip', not 'ip_address'
             device_port = device_config.get('port', 502)
             
             if not device_ip:
